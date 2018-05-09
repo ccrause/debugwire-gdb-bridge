@@ -267,7 +267,7 @@ begin
   delete(cmd, len, length(cmd) - len);
   len := StrToInt('$' + cmd);
 
-  if addr < $800000 then // flash memory
+  if (addr + len) < $800000 then // flash memory
   begin
     if (addr + len) < FDebugWire.Device.flashSize then
       FDebugWire.ReadFlash(addr, len, data)
@@ -325,7 +325,7 @@ begin
     data[i] := StrToInt(s);
   end;
 
-  if addr < $800000 then // flash memory
+  if (addr + len) < $800000 then // flash memory
   begin
     if (addr + len) < FDebugWire.Device.flashSize then
       FDebugWire.WriteFlash(addr, data)
