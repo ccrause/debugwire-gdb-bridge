@@ -262,18 +262,37 @@ begin
   s := '$' + copy(cmd, 1, len-1);
   delete(cmd, 1, len);
 
-  // TODO: Range check on memory - gdb seems to sometimes go haywire
   addr := StrToInt(s);
   len := gdb_fieldSepPos(cmd);
   delete(cmd, len, length(cmd) - len);
   len := StrToInt('$' + cmd);
 
   if addr < $800000 then // flash memory
-    FDebugWire.ReadFlash(addr, len, data)
-  else if addr < $810000 then // SRAM
-    FDebugWire.ReadAddress(addr, len, data)
+  begin
+    if (addr + len) < FDebugWire.Device.flashSize then
+      FDebugWire.ReadFlash(addr, len, data)
+    else
+    begin
+      FLog('Error: Flash address exceeds device limit');
+      SetLength(data, 0);
+    end;
+  end
+  else if (addr + len) < $810000 then // SRAM
+  begin
+    addr := addr and $FFFF;
+    if addr < 32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize then
+      FDebugWire.ReadAddress(addr and $FFFF, len, data)
+    else
+    begin
+      FLog('Error: Memory address exceeds device limit');
+      SetLength(data, 0);
+    end;
+  end
   else // must be EEPROM then
+  begin
+    FLog('Error: EEPROM access not supported yet.');
     SetLength(data, 0);
+  end;
 
   gdb_response(data);
 end;
@@ -307,11 +326,31 @@ begin
   end;
 
   if addr < $800000 then // flash memory
-    FDebugWire.WriteFlash(addr and $FFFF, data)
-  else if addr < $810000 then // SRAM
-    FDebugWire.WriteAddress(addr and $FFFF, data)
+  begin
+    if (addr + len) < FDebugWire.Device.flashSize then
+      FDebugWire.WriteFlash(addr, data)
+    else
+    begin
+      FLog('Error: Flash address exceeds device limit');
+      SetLength(data, 0);
+    end;
+  end
+  else if (addr + len) < $810000 then // SRAM
+  begin
+    addr := addr and $FFFF;
+    if addr < 32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize then
+      FDebugWire.WriteAddress(addr, data)
+    else
+    begin
+      FLog('Error: Memory address exceeds device limit');
+      SetLength(data, 0);
+    end;
+  end
   else // must be EEPROM then
+  begin
+    FLog('Error: EEPROM access not supported yet.');
     SetLength(data, 0);
+  end;
 
   gdb_response('OK');
 end;
