@@ -67,6 +67,12 @@ uses
 
 { TSerialObj }
 
+// Need Windows equivalent still
+// Check if custom baud is supported on Windows by checking COMMPROP.dwMaxBaud (https://msdn.microsoft.com/en-us/library/windows/desktop/aa363189(v=vs.85).aspx)
+// Set custom baud directly in DCB.BaudRate (https://msdn.microsoft.com/en-us/library/windows/desktop/aa363214(v=vs.85).aspx)
+
+// For custom baud rate on Linux see e.g. 
+// https://www.downtowndougbrown.com/2013/11/linux-custom-serial-baud-rates/
 procedure TSerialObj.FSetParams(ByteSize: Integer; Parity: TParityType;
   StopBits: Integer; Flags: TSerialFlags);
 var
