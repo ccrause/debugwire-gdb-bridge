@@ -137,7 +137,7 @@ var
   opt, reply: string;
   i: integer;
 begin
-  reply := 'hwbreak+';
+  reply := 'hwbreak+;swbreak+';
 {  reply := '';
   // Strip qSupported from cmd...
   i := gdb_fieldSepPos(cmd);
@@ -374,25 +374,16 @@ end;
 procedure TGdbRspThread.Execute;
 var
   msg, cmd : String;
-  Done: Boolean;
   buf: array[0..1023] of char;
   count, i, j, idstart, idend, addr: integer;
-  rdfd: TFDSet;
+  rdfd, edfd: TFDSet;
   timeout: TTimeVal;
   maxhandle: integer;
   serhandle, tcphandle: THandle;
+  Done: boolean;
 begin
   Done := false;
   msg := '';
-
-  timeout.tv_sec := 5;
-  timeout.tv_usec := 0;
-  fpFD_ZERO(rdfd);
-  fpFD_SET(FClientStream.Handle, rdfd);
-  maxhandle := FClientStream.Handle;
-  fpFD_SET(FDebugWire.Serial.SerialHandle, rdfd);
-  if FDebugWire.Serial.SerialHandle > maxhandle then
-    maxhandle := FDebugWire.Serial.SerialHandle;
 
   repeat
     try
@@ -401,17 +392,38 @@ begin
       serhandle := FDebugWire.Serial.SerialHandle;
       tcphandle := FClientStream.Handle;
       fpFD_ZERO(rdfd);
+      fpFD_ZERO(edfd);
       fpFD_SET(tcphandle, rdfd);
+      fpFD_SET(tcphandle, edfd);
       maxhandle := tcphandle;
       fpFD_SET(serhandle, rdfd);
       if serhandle > maxhandle then
         maxhandle := serhandle;
 
-      if fpSelect(maxhandle+1, @rdfd, nil, nil, @timeout) > 0 then
+      if fpSelect(maxhandle+1, @rdfd, nil, @edfd, @timeout) > 0 then
       begin
         if fpFD_ISSET(tcphandle, rdfd) > 0 then  // TCP data available
         begin
           count := FClientStream.Read(buf[0], length(buf));
+          //https://www.linuxquestions.org/questions/programming-9/how-could-server-detect-closed-client-socket-using-tcp-and-c-824615/
+          if (count = 0) then
+          begin
+            // simulate a kill command, it will delete hw BP and run target
+            // then exit this thread
+            buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
+            count := 5;
+            FLog('No data read, exiting read thread...');
+          end;
+        end;
+
+        if (count = 0) and (fpFD_ISSET(tcphandle, edfd) > 0) then
+        begin
+          //Done := true;
+          // simulate a kill command, it will delete hw BP and run target
+          // then exit this thread
+          buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
+          count := 5;
+          FLog('Error reading socket handle, done...');
         end;
 
         if (FDebugState = dsRunning) and (fpFD_ISSET(serhandle, rdfd) > 0) then // Serial data available
@@ -503,7 +515,7 @@ begin
 
               // delete breakpoint
               'z': begin
-                     if (cmd[2] = '1') and (FDebugWire.BP > -1) then  // only delete HW breakpoint, SW BP not supported internally yet
+                     if (cmd[2] in ['0', '1']) and (FDebugWire.BP > -1) then  // only delete HW breakpoint, SW BP not supported internally yet
                      begin
                        idstart := gdb_fieldSepPos(cmd);
                        delete(cmd, 1, idstart);
@@ -524,7 +536,7 @@ begin
 
               // insert breakpoint
               'Z': begin
-                     if (cmd[2] = '1') and (FDebugWire.BP = -1) then // only hardware breakpoint accepted - > gdb will then manage software breakpoints from outside
+                     if (cmd[2] in ['0', '1']) and (FDebugWire.BP = -1) then // only hardware breakpoint accepted - > gdb will then manage software breakpoints from outside
                      begin
                        idstart := gdb_fieldSepPos(cmd);
                        delete(cmd, 1, idstart);
@@ -570,7 +582,7 @@ begin
         end;     // if (i > 0) and ((count - 2) >= j)
       end;       // if (count > 0)
     except
-      on e: EStreamError do
+      on e: Exception do
       begin
         Done := true;
         FLog('Exception: ' + e.Message);
