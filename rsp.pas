@@ -48,6 +48,8 @@ type
     FActiveThread: TGdbRspThread;
     FActiveThreadRunning: boolean;
     FDebugWire: TDebugWire;
+    FSerialPort: string;
+    FBaud: integer;
 
     procedure FLog(s: string);
     procedure FActiveThreadOnTerminate(Sender: TObject);
@@ -56,6 +58,8 @@ type
     var accept: Boolean);
   public
     constructor Create(AOwner: TComponent);
+    constructor Create(AOwner: TComponent; serialPort: string);
+    constructor Create(AOwner: TComponent; serialPort: string; baud: integer);
     procedure Listen(aport: Word);
   end;
 
@@ -274,7 +278,8 @@ begin
     else
     begin
       FLog('Error: Flash address exceeds device limit');
-      SetLength(data, 0);
+      SetLength(data, len);
+      FillByte(data[0], length(data), 0);
     end;
   end
   else if (addr + len) < $810000 then // SRAM
@@ -285,7 +290,8 @@ begin
     else
     begin
       FLog('Error: Memory address exceeds device limit');
-      SetLength(data, 0);
+      SetLength(data, len);
+      FillByte(data[0], length(data), 0);
     end;
   end
   else // must be EEPROM then
@@ -313,7 +319,6 @@ begin
   len := gdb_fieldSepPos(cmd);
   s := '$' + copy(cmd, 1, len-1);
   delete(cmd, 1, len);
-//  l1 := StrToInt(s);
 
   // now convert data
   len := length(cmd) div 2;
@@ -422,23 +427,6 @@ begin
         end;
       end;
 
-      //if (FDebugState = dsRunning) then
-      //begin
-      //  if FDebugWire.TrySync then
-      //  begin
-      //    FDebugState := dsPaused;
-      //    FDebugWire.Reconnect;
-      //    gdb_response('S05');
-      //  end;
-      //end;
-      //
-      //if FPeek() > 0 then
-      //else
-      //begin
-      //  count := 0;
-      //  sleep(10);
-      //end;
-
       if count > 0 then
       begin
         msg := copy(buf, 1, count);
@@ -496,7 +484,10 @@ begin
               '?': gdb_response('S05');
 
               // continue
-              'c': DebugContinue;
+              'c': begin
+                     DebugContinue;
+                     gdb_response('OK');
+                   end;
 
               // step
               's': begin
@@ -652,19 +643,57 @@ begin
   FDebugWire.OnLog := @FLog;
 end;
 
+constructor TGdbRspServer.Create(AOwner: TComponent; serialPort: string);
+begin
+  FSerialPort := serialPort;
+  FBaud := 0;
+  Create(AOwner);
+end;
+
+constructor TGdbRspServer.Create(AOwner: TComponent; serialPort: string; baud: integer);
+begin
+  FSerialPort := serialPort;
+  FBaud := baud;
+  Create(AOwner);
+end;
+
 procedure TGdbRspServer.Listen(aport: Word);
 var
   targetOK: boolean;
 begin
-  if FDebugWire.Connect('/dev/ttyUSB0', 62500) then
+  targetOK := false;
+  if (FSerialPort <> '') then
   begin
-    FDebugWire.BreakCmd;
-    targetOK := FDebugWire.IdentifyTarget;
-    FDebugWire.Reset;   // reset MCU
+    if FDebugWire.Connect(FSerialPort, FBaud) then
+    begin
+      FDebugWire.BreakCmd;
+      targetOK := FDebugWire.IdentifyTarget;
+    end;
+  end
+  else  // no port name specified, scan possible candidates
+  begin
+    if FDebugWire.Connect('/dev/ttyUSB0', FBaud) then
+    begin
+      FDebugWire.BreakCmd;
+      targetOK := FDebugWire.IdentifyTarget;
+    end;
+
+    if not (targetOK) and FDebugWire.Connect('/dev/ttyACM1', FBaud) then
+    begin
+      FDebugWire.BreakCmd;
+      targetOK := FDebugWire.IdentifyTarget;
+    end;
+
+    if not (targetOK) and FDebugWire.Connect('/dev/ttyACM0', FBaud) then
+    begin
+      FDebugWire.BreakCmd;
+      targetOK := FDebugWire.IdentifyTarget;
+    end;
   end;
 
   if targetOK then
   begin
+    FDebugWire.Reset;   // reset MCU
     Self.Port := aport;
     self.Active := true;
     FLog('Listening on port: ' + IntToStr(aport));

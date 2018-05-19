@@ -304,14 +304,6 @@ begin
        3: result := 70;
        2: result := 60;
      end;
-    //case length(runlength) of
-    //  7: Result := 97;
-    //  6: result := 85;
-    //  5: result := 75;
-    //  4: result := 66;
-    //  3: result := 60;
-    //  2: result := 55;
-    //end;
   end;
 end;
 
@@ -341,6 +333,7 @@ begin
   FTimersMask := 0;
   FillChar(FDevice, sizeof(FDevice), 0);
   FPC := 0;
+  FBP := -1;
   SetLength(FCachedRegs, FRegCacheLength);
 end;
 
@@ -352,14 +345,17 @@ end;
 
 function TDebugWire.Connect(portName: string; baud: integer): boolean;
 begin
-  result := FSer.OpenPort(portName, baud);
+  if baud > 0 then
+    result := FSer.OpenPort(portName, baud)
+  else
+    result := Connect(portName);
 end;
 
 function TDebugWire.Connect(portName: string): boolean;
 begin
   if Connect(portName, 200000) then
   begin
-    ScanTargetBaud;
+    result := ScanTargetBaud;
   end;
 end;
 
@@ -1218,7 +1214,7 @@ var
 begin
   SendData(CMD_READ_PC);
   ReadData(2, buf);
-  FPC := 2*(buf[0] shl 8 + buf[1]);   // PC points to next instruction word
+  FPC := 2*((buf[0] shl 8 + buf[1]) - 1);   // PC points to next instruction word
   FLog('PC: $' + hexStr(FPC, 4));
 
   // Cache R28-R31
