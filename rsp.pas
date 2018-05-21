@@ -35,6 +35,8 @@ type
     procedure DebugSetRegisters(cmd: string);
     procedure DebugGetMemory(cmd: string);
     procedure DebugSetMemory(cmd: string);
+    procedure DebugMemoryMap;
+    procedure DebugStopReason;
   public
     constructor Create(AClientStream: TSocketStream; dw: TDebugWire);
     procedure Execute; override;
@@ -180,8 +182,9 @@ end;
 
 procedure TGdbRspThread.DebugContinue;
 begin
-  FDebugWire.Run;
-  FDebugState := dsRunning;
+  //FDebugWire.Run;
+  FDebugWire.ContinueUntilBreak;
+  //FDebugState := dsRunning;
 end;
 
 procedure TGdbRspThread.DebugStep;
@@ -322,7 +325,7 @@ begin
 
   // now convert data
   len := length(cmd) div 2;
-  SetLength(data, len);  // TODO: check consistency between len & l1
+  SetLength(data, len);
   s := '';
   for i := 0 to len-1 do
   begin
@@ -358,6 +361,49 @@ begin
   end;
 
   gdb_response('OK');
+end;
+
+procedure TGdbRspThread.DebugMemoryMap;
+begin
+{recv: qXfer:memory-map:read::0,fff
+query: Xfer;memory-map:read::0,fff
+Xfer: type:memory-map;op:read;annex:;addr:0;length:4095
+send: m<?xml version="1.0"?><!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN"     "http://sourceware.org/gdb/gdb-memory-map.dtd"><memory-map>  <memory type="rom" start="0x00000000" length="0x20000"/>  <memory type="ram" start="0x20000000" length="0x5000"/>  <memory type="flash" start="0x08000000" length="0x20000">    <property name="blocksize">0x400</property>  </memory>  <memory type="ram" start="0x40000000" length="0x1fffffff"/>  <memory type="ram" start="0xe0000000" length="0x1fffffff"/>  <memory type="rom" start="0x1ffff000" length="0x800"/>  <memory type="rom" start="0x1ffff800" length="0x10"/></memory-map>
+recv: qXfer:memory-map:read::27c,d83
+query: Xfer;memory-map:read::27c,d83
+Xfer: type:memory-map;op:read;annex:;addr:636;length:3459
+send: l
+recv: m800010c,4
+send: 154880f3
+}
+end;
+
+procedure TGdbRspThread.DebugStopReason;
+var
+  s: string;
+  data: TBytes;
+  i: integer;
+begin
+  s := 'T05';//'T05hwbreak:;';
+  // 32 General data
+  FDebugWire.ReadAddress(0, 32, data);
+  for i := 0 to 31 do
+  begin
+    s := s + hexStr(i, 2) + ':' + HexStr(data[i], 2) + ';';
+  end;
+
+  // SREG
+  FDebugWire.ReadAddress($5F, 1, data);
+  s := s + '20:' + hexStr(data[0], 2) + ';';
+
+  // SPL & SPH
+  FDebugWire.ReadAddress($5D, 2, data);
+  s := s + '21:' + hexStr(data[0], 2) + hexStr(data[1], 2) +';';
+
+  // PC in bytes
+  s := s + '22:' + hexStr(FDebugWire.PC and $FF, 2) + hexStr(FDebugWire.PC shr 8, 2) + '0000;';
+
+  gdb_response(s);
 end;
 
 { TGdbRspThread }
@@ -402,7 +448,7 @@ begin
 
       if fpSelect(maxhandle+1, @rdfd, nil, @edfd, @timeout) > 0 then
       begin
-        if fpFD_ISSET(tcphandle, rdfd) > 0 then  // TCP data available
+        if (FDebugState = dsPaused) and (fpFD_ISSET(tcphandle, rdfd) > 0) then  // TCP data available
         begin
           count := FClientStream.Read(buf[0], length(buf));
           //https://www.linuxquestions.org/questions/programming-9/how-could-server-detect-closed-client-socket-using-tcp-and-c-824615/
@@ -418,7 +464,7 @@ begin
 
         if (count = 0) and (fpFD_ISSET(tcphandle, edfd) > 0) then
         begin
-          //Done := true;
+          // Done := true;
           // simulate a kill command, it will delete hw BP and run target
           // then exit this thread
           buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
@@ -432,7 +478,8 @@ begin
           begin
             FDebugState := dsPaused;
             FDebugWire.Reconnect;
-            gdb_response('S05');
+            DebugStopReason;
+            //gdb_response('S05');
           end
           else
             FLog('Couldn''t detect break signal');
@@ -493,18 +540,20 @@ begin
           begin
             case cmd[1] of
               // stop reason
-              '?': gdb_response('S05');
+              '?': DebugStopReason;//gdb_response('S05');
 
               // continue
               'c': begin
                      DebugContinue;
-                     gdb_response('OK');
+                     DebugStopReason;
+                     //gdb_response('OK');
                    end;
 
               // step
               's': begin
                      DebugStep;
-                     gdb_response('S05');
+                     DebugStopReason;
+                     //gdb_response('S05');
                    end;
 
               // read general registers 32 registers + SREG + PCL + PCH + PCHH
@@ -573,6 +622,8 @@ begin
 
               'q': if pos('Supported', cmd) > 0 then
                      gdb_qSupported(cmd)
+                   //else if pos('fThreadInfo', cmd) > 0 then
+                   //  gdb_response('l')   // end of list, i.e. none
                    else
                      gdb_response('');
               else
