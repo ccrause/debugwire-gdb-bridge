@@ -32,11 +32,13 @@ type
     procedure DebugContinue;
     procedure DebugStep;
     procedure DebugGetRegisters;
+    procedure DebugGetRegister(cmd: string);
     procedure DebugSetRegisters(cmd: string);
+    procedure DebugSetRegister(cmd: string);
     procedure DebugGetMemory(cmd: string);
     procedure DebugSetMemory(cmd: string);
     procedure DebugMemoryMap;
-    procedure DebugStopReason;
+    procedure DebugStopReason(signal: integer);
   public
     constructor Create(AClientStream: TSocketStream; dw: TDebugWire);
     procedure Execute; override;
@@ -182,9 +184,9 @@ end;
 
 procedure TGdbRspThread.DebugContinue;
 begin
-  //FDebugWire.Run;
-  FDebugWire.ContinueUntilBreak;
-  //FDebugState := dsRunning;
+  FDebugWire.Run;
+  //FDebugWire.ContinueUntilBreak;
+  FDebugState := dsRunning;
 end;
 
 procedure TGdbRspThread.DebugStep;
@@ -216,6 +218,47 @@ begin
   gdb_response(resp);
 end;
 
+procedure TGdbRspThread.DebugGetRegister(cmd: string);
+var
+  regID: integer;
+  data: TBytes;
+  s: string;
+  i: integer;
+begin
+  // cmd still contain full gdb string with p prefix
+  delete(cmd, 1, 1);
+  if Length(cmd) = 2 then // Hex number of a byte value
+  begin
+    regID := StrToInt('$'+cmd);
+    case regID of
+      0..31: begin // normal registers
+               FDebugWire.ReadRegs(regID, 1, data);
+             end;
+      32: FDebugWire.ReadAddress($5F, 1, data); // SREG
+
+      33: FDebugWire.ReadAddress($5D, 2, data); // SPL, SPH
+
+      34: begin // PC
+            SetLength(data, 4);
+            data[0] := FDebugWire.PC and $FF;
+            data[1] := FDebugWire.PC shr 8;
+            data[2] := 0;
+            data[3] := 0;
+          end;
+    end;
+  end;
+
+  if length(data) > 0 then
+  begin
+    s := '';
+    for i := 0 to high(data) do
+      s := s + hexStr(data[i], 2);
+    gdb_response(s);
+  end
+  else
+    gdb_response('E00');
+end;
+
 procedure TGdbRspThread.DebugSetRegisters(cmd: string);
 var
   data: TBytes;
@@ -224,14 +267,14 @@ var
 begin
   // cmd still contain full gdb string with G prefix
   delete(cmd, 1, 1);
-  len := length(cmd) div 2;
+  len := length(cmd) div 2;  // in byte equivalents
 
   // extract normal registers
   l1 := min(len, 32);
   SetLength(data, l1);
   for i := 0 to l1-1 do
   begin
-    s := '$' + cmd[2*i] + cmd[2*i + 1];
+    s := '$' + cmd[2*i + 1] + cmd[2*i + 2];
     data[i] := StrToInt(s);
   end;
   FDebugWire.WriteAddress(0, data);
@@ -239,19 +282,66 @@ begin
   // Check for SREG
   if (len > 32) then
   begin
-    s := '$' + cmd[64] + cmd[65];
+    s := '$' + cmd[65] + cmd[66];
     SetLength(data, 1);
     data[0] := StrToInt(s);
     FDebugWire.WriteAddress($5F, data);
   end;
 
-  // Should be PC
-  if (len > 33) then
+  // Check for SPL/SPH
+  if (len > 34) then
   begin
-    l1 := len - 33; // number of bytes for PC
-    s := '$' + copy(cmd, 34, l1);
+    SetLength(data, 2);
+    s := '$' + cmd[67] + cmd[68];
     data[0] := StrToInt(s);
-    FDebugWire.WriteAddress($5F, data);
+    SetLength(data, 2);
+    s := '$' + cmd[69] + cmd[70];
+    data[1] := StrToInt(s);
+    FDebugWire.WriteAddress($5D, data);
+  end;
+
+  // Should be PC
+  if (len = 39) then
+  begin
+    s := '$' + copy(cmd, 71, 8);
+    FDebugWire.PC := word(StrToInt(s));
+  end;
+
+  gdb_response('OK');
+end;
+
+procedure TGdbRspThread.DebugSetRegister(cmd: string);
+var
+  regID: integer;
+  data: TBytes;
+  s: string;
+  sep, val, numbytes, i: integer;
+begin
+  // cmd still contain full gdb string with P prefix
+  delete(cmd, 1, 1);
+  sep := pos('=', cmd);
+  if sep = 3 then // regID is before '='
+  begin
+    regID := StrToInt('$' + copy(cmd, 1, 2));
+
+    numbytes := (length(cmd) - 3) div 2;
+    SetLength(data, numbytes);
+    for i := 0 to numbytes-1 do
+    begin
+      val := StrToInt('$' + cmd[4 + i*2] + cmd[4 + i*2 + 1]);
+      data[i] := (val shr (8*i)) and $ff;
+    end;
+
+    case regID of
+      // normal registers
+      0..31: FDebugWire.ReadRegs(regID, 1, data);
+      // SREG
+      32: FDebugWire.WriteAddress($5F, data);
+      // SPL, SPH
+      33: FDebugWire.WriteAddress($5D, data);
+      // PC
+      34: FDebugWire.PC := data[0] + data[1] shl 8;
+    end;
   end;
 
   gdb_response('OK');
@@ -378,13 +468,13 @@ send: 154880f3
 }
 end;
 
-procedure TGdbRspThread.DebugStopReason;
+procedure TGdbRspThread.DebugStopReason(signal: integer);
 var
   s: string;
   data: TBytes;
   i: integer;
 begin
-  s := 'T05';//'T05hwbreak:;';
+  s := 'T' + hexStr(signal, 2); //'T05hwbreak:;';
   // 32 General data
   FDebugWire.ReadAddress(0, 32, data);
   for i := 0 to 31 do
@@ -448,7 +538,7 @@ begin
 
       if fpSelect(maxhandle+1, @rdfd, nil, @edfd, @timeout) > 0 then
       begin
-        if (FDebugState = dsPaused) and (fpFD_ISSET(tcphandle, rdfd) > 0) then  // TCP data available
+        if (fpFD_ISSET(tcphandle, rdfd) > 0) then  // TCP data available
         begin
           count := FClientStream.Read(buf[0], length(buf));
           //https://www.linuxquestions.org/questions/programming-9/how-could-server-detect-closed-client-socket-using-tcp-and-c-824615/
@@ -464,7 +554,6 @@ begin
 
         if (count = 0) and (fpFD_ISSET(tcphandle, edfd) > 0) then
         begin
-          // Done := true;
           // simulate a kill command, it will delete hw BP and run target
           // then exit this thread
           buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
@@ -478,8 +567,7 @@ begin
           begin
             FDebugState := dsPaused;
             FDebugWire.Reconnect;
-            DebugStopReason;
-            //gdb_response('S05');
+            DebugStopReason(5);
           end
           else
             FLog('Couldn''t detect break signal');
@@ -490,6 +578,21 @@ begin
       begin
         msg := copy(buf, 1, count);
         count := length(msg);
+
+        // ctrl+c falls outside of normal gdb message structure
+        if msg[1] = #3 then // ctrl+C
+        begin
+          // ack received command
+          FClientStream.WriteByte(ord('+'));
+          FLog('Ctrl+C received');
+          FDebugWire.BreakCmd;
+          FDebugWire.Reconnect;
+          FDebugState := dsPaused;
+          // a signal number such as 2 is reported as an interrupt by gdb
+          // signal 0 is reported as "Program stopped." Should be less intrusive?
+          DebugStopReason(0);
+        end;
+
         i := pos('$', msg);  // start of command
         j := pos('#', msg);  // end of command
 
@@ -503,11 +606,10 @@ begin
 
           // Chop logic into a commands acceptable when target is running and
           // other commands applicable only if target is paused
-
           if FDebugState = dsRunning then
           begin
             case cmd[1] of
-              // detach, kill, ctrl-c
+              // detach, kill - not sure if gdb allow this state?
               // Resume/continue MCU?
               // perhaps reset then run?
               'D', 'k':
@@ -523,15 +625,6 @@ begin
                   else                  // assume detach leaves system in a runnable state
                     gdb_response('OK');
                 end;
-
-              #3 : begin                // ctrl+c interrupts running process
-                     FDebugWire.BreakCmd;
-                     FDebugWire.Sync;
-                     FDebugWire.Reconnect;
-                     FDebugState := dsPaused;
-                     gdb_response('OK');
-                   end;
-
               else
                 gdb_response('');
             end; // case
@@ -540,20 +633,18 @@ begin
           begin
             case cmd[1] of
               // stop reason
-              '?': DebugStopReason;//gdb_response('S05');
+              '?': DebugStopReason(5);
 
               // continue
               'c': begin
                      DebugContinue;
-                     DebugStopReason;
-                     //gdb_response('OK');
+                     gdb_response('OK');
                    end;
 
               // step
               's': begin
                      DebugStep;
-                     DebugStopReason;
-                     //gdb_response('S05');
+                     DebugStopReason(5);
                    end;
 
               // read general registers 32 registers + SREG + PCL + PCH + PCHH
@@ -561,6 +652,10 @@ begin
 
               // write general registers 32 registers + SREG + PCL + PCH + PCHH
               'G': DebugSetRegisters(cmd);
+
+              'p': DebugGetRegister(cmd);
+
+              'P': DebugSetRegister(cmd);
 
               // delete breakpoint
               'z': begin
@@ -607,7 +702,7 @@ begin
               'M': DebugSetMemory(cmd);
 
               // detach, kill
-              // Reset and continue MCU
+              // Reset and continue MCU - no way to kill target anyway
               'D', 'k':
                 begin
                   Done := true;
@@ -622,8 +717,6 @@ begin
 
               'q': if pos('Supported', cmd) > 0 then
                      gdb_qSupported(cmd)
-                   //else if pos('fThreadInfo', cmd) > 0 then
-                   //  gdb_response('l')   // end of list, i.e. none
                    else
                      gdb_response('');
               else
