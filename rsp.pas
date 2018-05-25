@@ -604,6 +604,10 @@ begin
           cmd := copy(msg, i + 1, (j - i - 1));
           FLog('-> ' + cmd);
 
+          // convert vKill to k, since there isn't any thread ID consideration
+          if pos('vKill;', cmd) > 0 then
+            cmd := 'k';
+
           // Chop logic into a commands acceptable when target is running and
           // other commands applicable only if target is paused
           if FDebugState = dsRunning then
