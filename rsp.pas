@@ -144,9 +144,8 @@ end;
 
 procedure TGdbRspThread.DebugContinue;
 begin
-  FDebugWire.Run;
-  //FDebugWire.ContinueUntilBreak;
   FDebugState := dsRunning;
+  FDebugWire.Run;
 end;
 
 procedure TGdbRspThread.DebugStep;
@@ -515,7 +514,9 @@ begin
             buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
             count := 5;
             FLog('No data read, exiting read thread...');
-          end;
+          end
+          else if (FDebugState = dsRunning) and (count > 0) then
+            FLog('Received data while running');
         end;
 
         if (count = 0) and (fpFD_ISSET(tcphandle, edfd) > 0) then
@@ -571,138 +572,105 @@ begin
           cmd := copy(msg, i + 1, (j - i - 1));
           FLog('-> ' + cmd);
 
-          // Chop logic into a commands acceptable when target is running and
-          // other commands applicable only if target is paused
-          if FDebugState = dsRunning then
-          begin
-            case cmd[1] of
-              // detach, kill
-              // Resume/continue MCU?
-              // perhaps reset then run?
-              'D', 'k':
-                begin
-                  Done := true;         // terminate debug connection
-                  FDebugWire.BreakCmd;
-                  if cmd[1] = 'k' then  // kill handled as break/reset/run
-                  begin
-                    FDebugWire.Reset;
-                  end
-                  else                  // assume detach leaves system in a runnable state
-                    gdb_response('OK');
+          case cmd[1] of
+            // stop reason
+            '?': DebugStopReason(5);
 
-                  FDebugWire.Reconnect;
-                  //Done: call BP manager to remove HW & SW BPs
-                  FBPManager.DeleteAllBPs;
-                  FBPManager.FinalizeBPs;
-                  FDebugWire.Run;
-                end;
+            // continue
+            'c': begin
+                   FBPManager.FinalizeBPs;  // check which BPs needs to be removed/written
+                   FBPManager.PrintBPs;     // debug
+                   DebugContinue;
+                   //gdb_response('OK');
+                 end;
 
-              'q': gdb_response('');
-              else
-                gdb_response('E99');
-            end; // case
-          end    // if
-          else
-          begin
-            case cmd[1] of
-              // stop reason
-              '?': DebugStopReason(5);
+            // step
+            's': begin
+                   // TODO: Check if stepping into a sw BP?
+                   DebugStep;
+                   DebugStopReason(5);
+                 end;
 
-              // continue
-              'c': begin
-                     FBPManager.FinalizeBPs;  // check which BPs needs to be removed/written
-                     FBPManager.PrintBPs;     // debug
-                     DebugContinue;
-                     //gdb_response('OK');
-                   end;
+            // read general registers 32 registers + SREG + PCL + PCH + PCHH
+            'g': DebugGetRegisters;
 
-              // step
-              's': begin
-                     // TODO: Check if stepping into a sw BP
-                     DebugStep;
-                     DebugStopReason(5);
-                   end;
+            // write general registers 32 registers + SREG + PCL + PCH + PCHH
+            'G': DebugSetRegisters(cmd);
 
-              // read general registers 32 registers + SREG + PCL + PCH + PCHH
-              'g': DebugGetRegisters;
+            'p': DebugGetRegister(cmd);
 
-              // write general registers 32 registers + SREG + PCL + PCH + PCHH
-              'G': DebugSetRegisters(cmd);
+            'P': DebugSetRegister(cmd);
 
-              'p': DebugGetRegister(cmd);
+            // delete breakpoint
+            'z': begin
+                   if (cmd[2] in ['0', '1']) then
+                   begin
+                     idstart := gdb_fieldSepPos(cmd);
+                     delete(cmd, 1, idstart);
+                     idend := gdb_fieldSepPos(cmd);
+                     msg := copy(cmd, 1, idend-1);
+                     addr := StrToInt('$' + msg);
 
-              'P': DebugSetRegister(cmd);
-
-              // delete breakpoint
-              'z': begin
-                     if (cmd[2] in ['0', '1']) then
-                     begin
-                       idstart := gdb_fieldSepPos(cmd);
-                       delete(cmd, 1, idstart);
-                       idend := gdb_fieldSepPos(cmd);
-                       msg := copy(cmd, 1, idend-1);
-                       addr := StrToInt('$' + msg);
-
-                       FBPManager.DeleteBP(addr);
-                       gdb_response('OK');
-                     end
-                     else
-                       gdb_response('');
-                   end;
-
-              // insert breakpoint
-              // Only 1 BP used, setting new BP silently overwrites prebiously set BP
-              'Z': begin
-                     if (cmd[2] in ['0', '1']) then
-                     begin
-                       idstart := gdb_fieldSepPos(cmd);
-                       delete(cmd, 1, idstart);
-                       idend := gdb_fieldSepPos(cmd);
-                       msg := copy(cmd, 1, idend-1);
-
-                       addr := StrToInt('$'+msg);
-                       FBPManager.AddBP(addr);
-                       gdb_response('OK');
-                     end
-                     else
-                       gdb_response('');
-                   end;
-
-              // Read memory
-              'm': DebugGetMemory(cmd);
-
-              // Write memory
-              // TODO: also support X - binary equivalent.
-              'M': DebugSetMemory(cmd);
-
-              // detach, kill
-              // Reset and continue MCU - no way to kill target anyway
-              'D', 'k':
-                begin
-                  Done := true;         // terminate debug connection
-                  if cmd[1] = 'k' then  // kill handled as break/reset/run
-                  begin
-                    FDebugWire.Reset;
-                    FDebugWire.Reconnect;
-                  end
-                  else                  // assume detach leaves system in a runnable state
-                    gdb_response('OK');
-
-                  //Done: call BP manager to remove HW & SW BPs
-                  FBPManager.DeleteAllBPs;
-                  FBPManager.FinalizeBPs;
-                  FDebugWire.Run;
-                end;
-
-              'q': if pos('Supported', cmd) > 0 then
-                     gdb_qSupported(cmd)
+                     FBPManager.DeleteBP(addr);
+                     gdb_response('OK');
+                   end
                    else
                      gdb_response('');
-              else
-                gdb_response('');
-            end; // case
-          end;   // else
+                 end;
+
+            // insert breakpoint
+            // Only 1 BP used, setting new BP silently overwrites prebiously set BP
+            'Z': begin
+                   if (cmd[2] in ['0', '1']) then
+                   begin
+                     idstart := gdb_fieldSepPos(cmd);
+                     delete(cmd, 1, idstart);
+                     idend := gdb_fieldSepPos(cmd);
+                     msg := copy(cmd, 1, idend-1);
+
+                     addr := StrToInt('$'+msg);
+                     FBPManager.AddBP(addr);
+                     gdb_response('OK');
+                   end
+                   else
+                     gdb_response('');
+                 end;
+
+            // Read memory
+            'm': DebugGetMemory(cmd);
+
+            // Write memory
+            // TODO: also support X - binary equivalent.
+            'M': DebugSetMemory(cmd);
+
+            // detach, kill
+            // Reset and continue MCU - no way to kill target anyway
+            'D', 'k':
+              begin
+                Done := true;         // terminate debug connection
+                if cmd[1] = 'k' then  // kill handled as break/reset/run
+                begin
+                  FDebugWire.Reset;
+                  FDebugWire.Reconnect;
+                end
+                else                  // assume detach leaves system in a runnable state
+                  gdb_response('OK');
+
+                //Done: call BP manager to remove HW & SW BPs
+                FBPManager.DeleteAllBPs;
+                FBPManager.FinalizeBPs;
+                FDebugWire.Run;
+              end;
+
+            'q': if pos('Supported', cmd) > 0 then
+                   gdb_qSupported(cmd)
+                 else
+                   gdb_response('');
+            else
+              gdb_response('');
+          end; // case
         end;     // if (i > 0) and ((count - 2) >= j)
+        count := 0;  // so that next loop doesn't echo...
       end;       // if (count > 0)
     except
       on e: Exception do
