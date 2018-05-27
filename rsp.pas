@@ -5,7 +5,7 @@ interface
 uses
   {$ifdef unix}cthreads,{$endif}
   Classes, SysUtils, Sockets, fpAsync, fpSock,
-  math, debugwire;
+  math, debugwire, bpmanager;
 
 type
 
@@ -18,6 +18,7 @@ type
     FDebugWire: TDebugWire;
     FDebugState: TDebugState;
     FLogger: TLog;
+    FBPManager: TBPManager;
     procedure FLog(s: string);
 
     // check if data available
@@ -40,7 +41,7 @@ type
     procedure DebugMemoryMap;
     procedure DebugStopReason(signal: integer);
   public
-    constructor Create(AClientStream: TSocketStream; dw: TDebugWire);
+    constructor Create(AClientStream: TSocketStream; dw: TDebugWire; logger: TLog);
     procedure Execute; override;
     property OnLog: TLog read FLogger write FLogger;
   end;
@@ -137,49 +138,8 @@ begin
 end;
 
 procedure TGdbRspThread.gdb_qSupported(cmd: string);
-var
-  opt, reply: string;
-  i: integer;
 begin
-  reply := 'hwbreak+;swbreak+';
-{  reply := '';
-  // Strip qSupported from cmd...
-  i := gdb_fieldSepPos(cmd);
-  delete(cmd, 1, i);
-
-  // Separator between this and next option
-  i := gdb_fieldSepPos(cmd);
-
-  while length(cmd) > 0 do//i > 0 do
-  begin
-    if i > 1 then
-    begin
-      opt := copy(cmd, 1, i-1);
-      delete(cmd, 1, i);
-    end
-    else
-    begin
-      opt := cmd;
-      cmd := '';
-    end;
-
-    if opt = 'hwbreak+' then
-      reply := reply + 'hwbreak+'
-    else
-    begin
-      reply := reply + copy(opt, 1, length(opt)-1) + '-';
-    end;
-
-    reply :=reply + ';';
-
-    i := gdb_fieldSepPos(cmd);
-  end;
-
-  // Strip separator at end of reply
-  if length(reply) > 0 then
-    delete(reply, length(reply), 1);
-}
-  gdb_response(reply);
+  gdb_response('hwbreak+;swbreak+');
 end;
 
 procedure TGdbRspThread.DebugContinue;
@@ -314,7 +274,6 @@ procedure TGdbRspThread.DebugSetRegister(cmd: string);
 var
   regID: integer;
   data: TBytes;
-  s: string;
   sep, val, numbytes, i: integer;
 begin
   // cmd still contain full gdb string with P prefix
@@ -349,7 +308,7 @@ end;
 
 procedure TGdbRspThread.DebugGetMemory(cmd: string);
 var
-  len: integer;
+  len, i: integer;
   s: string;
   addr: dword;
   data: TBytes;
@@ -393,7 +352,11 @@ begin
     SetLength(data, 0);
   end;
 
-  gdb_response(data);
+  s := '';
+  for i := 0 to high(data) do
+    s := s + hexStr(data[i], 2);
+
+  gdb_response(s);
 end;
 
 procedure TGdbRspThread.DebugSetMemory(cmd: string);
@@ -498,13 +461,16 @@ end;
 
 { TGdbRspThread }
 
-constructor TGdbRspThread.Create(AClientStream: TSocketStream; dw: TDebugWire);
+constructor TGdbRspThread.Create(AClientStream: TSocketStream; dw: TDebugWire;
+  logger: TLog);
 begin
   inherited Create(false);
   FreeOnTerminate := true;
   FClientStream := AClientStream;
   FDebugWire := dw;
   FDebugState := dsPaused;
+  FLogger := logger;
+  FBPManager := TBPManager.Create(FDebugWire, logger);
 end;
 
 procedure TGdbRspThread.Execute;
@@ -584,6 +550,7 @@ begin
         begin
           // ack received command
           FClientStream.WriteByte(ord('+'));
+          gdb_response('OK');                  // similar to vCtrlC
           FLog('Ctrl+C received');
           FDebugWire.BreakCmd;
           FDebugWire.Reconnect;
@@ -604,33 +571,35 @@ begin
           cmd := copy(msg, i + 1, (j - i - 1));
           FLog('-> ' + cmd);
 
-          // convert vKill to k, since there isn't any thread ID consideration
-          if pos('vKill;', cmd) > 0 then
-            cmd := 'k';
-
           // Chop logic into a commands acceptable when target is running and
           // other commands applicable only if target is paused
           if FDebugState = dsRunning then
           begin
             case cmd[1] of
-              // detach, kill - not sure if gdb allow this state?
+              // detach, kill
               // Resume/continue MCU?
               // perhaps reset then run?
               'D', 'k':
                 begin
                   Done := true;         // terminate debug connection
+                  FDebugWire.BreakCmd;
                   if cmd[1] = 'k' then  // kill handled as break/reset/run
                   begin
-                    FDebugWire.BreakCmd;
                     FDebugWire.Reset;
-                    FDebugWire.BP := -1;  // in case a hw break is set
-                    FDebugWire.Run;
                   end
                   else                  // assume detach leaves system in a runnable state
                     gdb_response('OK');
+
+                  FDebugWire.Reconnect;
+                  //Done: call BP manager to remove HW & SW BPs
+                  FBPManager.DeleteAllBPs;
+                  FBPManager.FinalizeBPs;
+                  FDebugWire.Run;
                 end;
+
+              'q': gdb_response('');
               else
-                gdb_response('');
+                gdb_response('E99');
             end; // case
           end    // if
           else
@@ -641,12 +610,15 @@ begin
 
               // continue
               'c': begin
+                     FBPManager.FinalizeBPs;  // check which BPs needs to be removed/written
+                     FBPManager.PrintBPs;     // debug
                      DebugContinue;
-                     gdb_response('OK');
+                     //gdb_response('OK');
                    end;
 
               // step
               's': begin
+                     // TODO: Check if stepping into a sw BP
                      DebugStep;
                      DebugStopReason(5);
                    end;
@@ -663,35 +635,33 @@ begin
 
               // delete breakpoint
               'z': begin
-                     if (cmd[2] in ['0', '1']) and (FDebugWire.BP > -1) then  // only delete HW breakpoint, SW BP not supported internally yet
+                     if (cmd[2] in ['0', '1']) then
                      begin
                        idstart := gdb_fieldSepPos(cmd);
                        delete(cmd, 1, idstart);
                        idend := gdb_fieldSepPos(cmd);
                        msg := copy(cmd, 1, idend-1);
                        addr := StrToInt('$' + msg);
-                       if addr = FDebugWire.BP then
-                       begin
-                         FDebugWire.BP := -1;
-                         gdb_response('OK');
-                       end
-                       else
-                         gdb_response('E01');  // address should match stored BP
+
+                       FBPManager.DeleteBP(addr);
+                       gdb_response('OK');
                      end
                      else
                        gdb_response('');
                    end;
 
               // insert breakpoint
+              // Only 1 BP used, setting new BP silently overwrites prebiously set BP
               'Z': begin
-                     if (cmd[2] in ['0', '1']) and (FDebugWire.BP = -1) then // only hardware breakpoint accepted - > gdb will then manage software breakpoints from outside
+                     if (cmd[2] in ['0', '1']) then
                      begin
                        idstart := gdb_fieldSepPos(cmd);
                        delete(cmd, 1, idstart);
                        idend := gdb_fieldSepPos(cmd);
                        msg := copy(cmd, 1, idend-1);
 
-                       FDebugWire.BP := StrToInt('$'+msg);
+                       addr := StrToInt('$'+msg);
+                       FBPManager.AddBP(addr);
                        gdb_response('OK');
                      end
                      else
@@ -709,14 +679,19 @@ begin
               // Reset and continue MCU - no way to kill target anyway
               'D', 'k':
                 begin
-                  Done := true;
-                  FDebugWire.BP := -1;
-                  FDebugWire.Reset;
-                  FDebugWire.Run;
-
-                  // Detach (D) requires an acknowledge
-                  if cmd[1] = 'D' then
+                  Done := true;         // terminate debug connection
+                  if cmd[1] = 'k' then  // kill handled as break/reset/run
+                  begin
+                    FDebugWire.Reset;
+                    FDebugWire.Reconnect;
+                  end
+                  else                  // assume detach leaves system in a runnable state
                     gdb_response('OK');
+
+                  //Done: call BP manager to remove HW & SW BPs
+                  FBPManager.DeleteAllBPs;
+                  FBPManager.FinalizeBPs;
+                  FDebugWire.Run;
                 end;
 
               'q': if pos('Supported', cmd) > 0 then
@@ -764,9 +739,9 @@ begin
   if not FActiveThreadRunning then
   begin
     FLog('Incoming connection from ' + AddrToString(AStream.PeerAddress));
-    FActiveThread := TGdbRspThread.Create(AStream, FDebugWire);
+    FActiveThread := TGdbRspThread.Create(AStream, FDebugWire, @self.FLog);
     FActiveThread.OnTerminate := @FActiveThreadOnTerminate;
-    FActiveThread.OnLog := @FLog;
+    //FActiveThread.OnLog := @FLog;
     FActiveThreadRunning := true;
   end
   else
