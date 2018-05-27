@@ -225,8 +225,6 @@ begin
 end;
 
 function TSerialObj.Write(var Buffer; Count: LongInt): LongInt;
-var
-  byteArray: TByteArray absolute Buffer;
 begin
   result := SerWrite(FHandle, Buffer, Count);
 end;
