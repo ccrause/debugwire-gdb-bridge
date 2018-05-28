@@ -11,6 +11,7 @@ type
 
   { TGdbRspThread }
   TDebugState = (dsPaused, dsRunning);
+  TDebugStopReason = (srCtrlC, srHWBP, srSWBP);
 
   TGdbRspThread = class(TThread)
   private
@@ -39,7 +40,7 @@ type
     procedure DebugGetMemory(cmd: string);
     procedure DebugSetMemory(cmd: string);
     procedure DebugMemoryMap;
-    procedure DebugStopReason(signal: integer);
+    procedure DebugStopReason(signal: integer; stopReason: TDebugStopReason);
   public
     constructor Create(AClientStream: TSocketStream; dw: TDebugWire; logger: TLog);
     procedure Execute; override;
@@ -430,13 +431,20 @@ send: 154880f3
 }
 end;
 
-procedure TGdbRspThread.DebugStopReason(signal: integer);
+procedure TGdbRspThread.DebugStopReason(signal: integer;
+  stopReason: TDebugStopReason);
 var
   s: string;
   data: TBytes;
   i: integer;
 begin
-  s := 'T' + hexStr(signal, 2); //'T05hwbreak:;';
+  s := 'T' + hexStr(signal, 2);
+  case stopReason of
+    srHWBP: s := s + 'hwbreak';
+    srSWBP: s := s + 'swbreak';
+  end;
+
+  //'T05hwbreak:;';
   // 32 General data
   FDebugWire.ReadAddress(0, 32, data);
   for i := 0 to 31 do
@@ -534,7 +542,7 @@ begin
           begin
             FDebugState := dsPaused;
             FDebugWire.Reconnect;
-            DebugStopReason(5);
+            DebugStopReason(5, srHWBP);
           end
           else
             FLog('Couldn''t detect break signal');
@@ -558,7 +566,7 @@ begin
           FDebugState := dsPaused;
           // a signal number such as 2 is reported as an interrupt by gdb
           // signal 0 is reported as "Program stopped." Should be less intrusive?
-          DebugStopReason(0);
+          DebugStopReason(2, srCtrlC); // SIGINT, because the program was interrupted...
         end;
 
         i := pos('$', msg);  // start of command
@@ -574,21 +582,20 @@ begin
 
           case cmd[1] of
             // stop reason
-            '?': DebugStopReason(5);
+            '?': DebugStopReason(5, srHWBP);
 
             // continue
             'c': begin
                    FBPManager.FinalizeBPs;  // check which BPs needs to be removed/written
                    FBPManager.PrintBPs;     // debug
                    DebugContinue;
-                   //gdb_response('OK');
                  end;
 
             // step
             's': begin
                    // TODO: Check if stepping into a sw BP?
                    DebugStep;
-                   DebugStopReason(5);
+                   DebugStopReason(5, srSWBP);
                  end;
 
             // read general registers 32 registers + SREG + PCL + PCH + PCHH
@@ -664,6 +671,8 @@ begin
 
             'q': if pos('Supported', cmd) > 0 then
                    gdb_qSupported(cmd)
+                 else if cmd[2] = 'L' then
+                   gdb_response('qM0010000000000000000')
                  else
                    gdb_response('');
             else
@@ -700,6 +709,7 @@ procedure TGdbRspServer.FActiveThreadOnTerminate(Sender: TObject);
 begin
   FActiveThreadRunning := false;
   FLog('FActiveThreadOnTerminate');
+  halt;
 end;
 
 procedure TGdbRspServer.FAcceptConnection(Sender: TConnectionBasedSocket; AStream: TSocketStream);
@@ -709,7 +719,6 @@ begin
     FLog('Incoming connection from ' + AddrToString(AStream.PeerAddress));
     FActiveThread := TGdbRspThread.Create(AStream, FDebugWire, @self.FLog);
     FActiveThread.OnTerminate := @FActiveThreadOnTerminate;
-    //FActiveThread.OnLog := @FLog;
     FActiveThreadRunning := true;
   end
   else
@@ -805,7 +814,6 @@ begin
   end
   else
     FLog('Target not started...');
-  //Halt;
 end;
 
 end.
