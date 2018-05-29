@@ -13,9 +13,9 @@ https://github.com/jbtronics/WireDebugger
 * Add elf reader - long term. Convenience.
 * Add breakpoint manager for more than one breakpoint. gdb by default seem to only insert software breaks into flash.  This works, but causes flash wear.  Perhaps manage break points on internally to ensure that the single hardware break point is also utilized?
 Idea:
-  * Put first BP in HW
-  * Further BP in list, with corresponding opcode replaced with break (flash write). Store opcode in manager.
+  * ~~Put first BP in HW~~ Done
+  * ~~Further BP in list, with corresponding opcode replaced with break (flash write). Store opcode in manager.~~ Done
   * Execute stored instruction when continuing after break.
-  * If HW BP deleted, pop next BP from manager. Or keep HW BP open until next BP is set to minimize flash rewrites.
-  * When deleting a SW BP, restore original instruction (flash write).
+  * ~~If HW BP deleted, pop next BP from manager. Or keep HW BP open until next BP is set to minimize flash rewrites.~~ Done
+  * When deleting a SW BP, restore original instruction (flash write). (disabled while testing)
   * What will happen if server crashes, or hardware is switched off during debug session with active SW BP's?
