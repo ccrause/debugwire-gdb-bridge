@@ -13,6 +13,8 @@ type
   TDebugState = (dsPaused, dsRunning);
   TDebugStopReason = (srCtrlC, srHWBP, srSWBP);
 
+  // To view rsp communication as received by gdb:
+  // (gdb) set debug remote 1
   TGdbRspThread = class(TThread)
   private
     FClientStream: TSocketStream;
@@ -20,10 +22,8 @@ type
     FDebugState: TDebugState;
     FLogger: TLog;
     FBPManager: TBPManager;
+    FLastCmd: string;  // in case a resend is required;
     procedure FLog(s: string);
-
-    // check if data available
-    function FPeek(): integer;
 
     function gdb_fieldSepPos(cmd: string): integer;
     procedure gdb_response(s: string);
@@ -85,11 +85,6 @@ begin
     Flogger({TimeToStr(Now) + ' : ' +} s);
 end;
 
-function TGdbRspThread.FPeek(): integer;
-begin
-  Result := fprecv(FClientStream.Handle, nil, 1, MSG_PEEK);
-end;
-
 function TGdbRspThread.gdb_fieldSepPos(cmd: string): integer;
 var
   colonPos, commaPos, semicolonPos: integer;
@@ -116,15 +111,17 @@ var
   checksum, i: integer;
   reply: string;
 begin
+  FLastCmd := s;
   checksum := 0;
 
   for i := 1 to length(s) do
     checksum := checksum + ord(s[i]);
 
-  reply := '$' + s + '#' + hexStr(checksum and $ff, 2);
-  FClientStream.WriteAnsiString(reply);
+  reply := '$' + s + '#' + hexStr(byte(checksum), 2);
+  FClientStream.WriteBuffer(reply[1], length(reply));
   FLog('<- ' + reply);
 end;
+
 
 procedure TGdbRspThread.gdb_response(data: TBytes);
 var
@@ -140,7 +137,12 @@ end;
 
 procedure TGdbRspThread.gdb_qSupported(cmd: string);
 begin
-  gdb_response('hwbreak+;swbreak+');
+  if pos('Supported', cmd) > 0 then
+    gdb_response('hwbreak+;swbreak+')
+  else if pos('Offsets', cmd) > 0 then
+    gdb_response('Text=0;Data=0;Bss=0')
+  else if pos('Symbol', cmd) > 0 then
+    gdb_response('OK');
 end;
 
 procedure TGdbRspThread.DebugContinue;
@@ -444,7 +446,6 @@ begin
     srSWBP: s := s + 'swbreak';
   end;
 
-  //'T05hwbreak:;';
   // 32 General data
   FDebugWire.ReadAddress(0, 32, data);
   for i := 0 to 31 do
@@ -552,33 +553,33 @@ begin
       if count > 0 then
       begin
         msg := copy(buf, 1, count);
-        count := length(msg);
 
         // ctrl+c falls outside of normal gdb message structure
         if msg[1] = #3 then // ctrl+C
         begin
           // ack received command
           FClientStream.WriteByte(ord('+'));
-          gdb_response('OK');                  // similar to vCtrlC
-          FLog('Ctrl+C received');
+          FLog('-> Ctrl+C');
           FDebugWire.BreakCmd;
           FDebugWire.Reconnect;
           FDebugState := dsPaused;
-          // a signal number such as 2 is reported as an interrupt by gdb
-          // signal 0 is reported as "Program stopped." Should be less intrusive?
           DebugStopReason(2, srCtrlC); // SIGINT, because the program was interrupted...
-        end;
+        end
+        else
+          FLog('-> ' + msg);
+
 
         i := pos('$', msg);  // start of command
         j := pos('#', msg);  // end of command
 
+        // This check also skip ack / nack replies (+/-)
         if (i > 0) and ((count - 2) >= j) then  // start & terminator + 2 byte CRC received
         begin
           // ack received command
           FClientStream.WriteByte(ord('+'));
+          FLog('<- +');
 
           cmd := copy(msg, i + 1, (j - i - 1));
-          FLog('-> ' + cmd);
 
           case cmd[1] of
             // stop reason
@@ -604,6 +605,9 @@ begin
             // write general registers 32 registers + SREG + PCL + PCH + PCHH
             'G': DebugSetRegisters(cmd);
 
+            // Set thread for operation - only 1 so just acknowledge
+            'H': gdb_response('OK');
+
             'p': DebugGetRegister(cmd);
 
             'P': DebugSetRegister(cmd);
@@ -625,8 +629,7 @@ begin
                      gdb_response('');
                  end;
 
-            // insert breakpoint
-            // Only 1 BP used, setting new BP silently overwrites prebiously set BP
+            // insert sw or hw breakpoint via BP manager
             'Z': begin
                    if (cmd[2] in ['0', '1']) then
                    begin
@@ -639,7 +642,7 @@ begin
                      FBPManager.AddBP(addr);
                      gdb_response('OK');
                    end
-                   else
+                   else  // other BPs such as watch points not supported
                      gdb_response('');
                  end;
 
@@ -656,10 +659,7 @@ begin
               begin
                 Done := true;         // terminate debug connection
                 if cmd[1] = 'k' then  // kill handled as break/reset/run
-                begin
-                  FDebugWire.Reset;
-                  FDebugWire.Reconnect;
-                end
+                  FDebugWire.Reset
                 else                  // assume detach leaves system in a runnable state
                   gdb_response('OK');
 
@@ -671,14 +671,19 @@ begin
 
             'q': if pos('Supported', cmd) > 0 then
                    gdb_qSupported(cmd)
-                 else if cmd[2] = 'L' then
-                   gdb_response('qM0010000000000000000')
+                 //else if cmd[2] = 'L' then
+                 //  gdb_response('qM0010000000000000000')
                  else
                    gdb_response('');
             else
               gdb_response('');
           end; // case
-        end;     // if (i > 0) and ((count - 2) >= j)
+        end     // if (i > 0) and ((count - 2) >= j)
+        else if (msg[1] = '-') then
+        begin
+          FLog('Resending previous message');
+          gdb_response(FLastCmd);
+        end;
         count := 0;  // so that next loop doesn't echo...
       end;       // if (count > 0)
     except
