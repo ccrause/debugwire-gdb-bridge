@@ -29,7 +29,7 @@ type
   TSerialObj = class
   private
     FBaudRate: integer;
-    Ftios: Termios_;
+    {$IFNDEF WINDOWS}Ftios: Termios_;{$ENDIF}
     FBreakType: TBreakType;
     FBreakBaudRate: integer;
     FHandle: THandle;
@@ -53,7 +53,7 @@ type
 
     property BaudRate: integer read FBaudRate write FUpdateBaudRate;
     property BreakBaudRate: integer read FBreakBaudRate write FBreakBaudRate;
-    property SerialHandle: integer read FHandle;
+    property SerialHandle: THandle read FHandle;
   end;
 
 const
@@ -63,14 +63,25 @@ const
 implementation
 
 uses
+  {$IFDEF UNIX}
   termio, BaseUnix, errors;
+  {$ELSE}
+  windows;
+  {$ENDIF}
 
 { TSerialObj }
 
+{$ifdef windows}
 // Need Windows equivalent still
 // Check if custom baud is supported on Windows by checking COMMPROP.dwMaxBaud (https://msdn.microsoft.com/en-us/library/windows/desktop/aa363189(v=vs.85).aspx)
 // Set custom baud directly in DCB.BaudRate (https://msdn.microsoft.com/en-us/library/windows/desktop/aa363214(v=vs.85).aspx)
+procedure TSerialObj.FSetParams(ByteSize: Integer; Parity: TParityType;
+  StopBits: Integer; Flags: TSerialFlags);
+begin
+  SerSetParams(FHandle, BaudRate, ByteSize, Parity, StopBits, Flags);
+end;
 
+{$else}
 // For custom baud rate on Linux see e.g. 
 // https://www.downtowndougbrown.com/2013/11/linux-custom-serial-baud-rates/
 procedure TSerialObj.FSetParams(ByteSize: Integer; Parity: TParityType;
@@ -142,6 +153,7 @@ begin
   else
     tcsetattr(FHandle, TCSANOW, Termios(pointer(@Ftios)^));
 end;
+{$endif}
 
 procedure TSerialObj.FUpdateBaudRate(aBaud: integer);
 begin
@@ -151,25 +163,32 @@ end;
 
 procedure TSerialObj.Break;
 var
-  status: integer;
+  status: {$IFDEF WINDOWS}longbool;{$ELSE}integer;{$ENDIF}
   b: word;
 begin
   if FBreakType = btShort then
   begin
+    {$IFDEF WINDOWS}
+    status := SetCommBreak(FHandle);
+    Sleep(1);
+    status := ClearCommBreak(FHandle);
+    {$ELSE}
     status := FpIOCtl(FHandle, TIOCSBRK, pointer(ptrint(0)));
     sleep(1);
     status := FpIOCtl(FHandle, TIOCCBRK, pointer(ptrint(0)));
+    {$ENDIF}
     SerSync(FHandle);
 
-    if status <> 0 then // possible that break isn't supported by driver or chip?
+    if {$IFDEF WINDOWS} not status {$ELSE} status <> 0 {$ENDIF}then // possible that break isn't supported by driver or chip?
     begin
-      FBreakType := btStandard;
-      WriteLn('ERROR - break status: ', StrError(errno));
+      FBreakType := {$IFDEF WINDOWS}btSendZero{$ELSE}btStandard{$ENDIF};
+      WriteLn('ERROR - break status: ', {$IFNDEF WINDOWS}StrError(errno){$ELSE} IntToStr(GetLastOSError) {$ENDIF});
       WriteLn('Switching to standard break signal');
       SerFlush(FHandle);    // clear buffers
     end;
   end;
 
+  {$IFNDEF WINDOWS}
   if FBreakType = btStandard then
   begin
     status := TCSendBreak(FHandle, 0);
@@ -183,6 +202,7 @@ begin
       SerFlush(FHandle);    // clear buffers
     end;
   end;
+  {$ENDIF}
 
   if FBreakType = btSendZero then
   begin
@@ -199,9 +219,13 @@ end;
 function TSerialObj.OpenPort(aPortName: string; baud: integer): boolean;
 begin
   portName := aPortName;
+  {$IFNDEF WINDOWS}
   FHandle := FpOpen(portName, O_RDWR or O_NOCTTY or O_NONBLOCK);
+  {$ELSE}
+  FHandle := SerOpen(aPortName);
+  {$ENDIF}
 
-  if (FHandle < 0)then
+  if {$IFNDEF WINDOWS}(FHandle < 0) {$ELSE} (FHandle = ERROR_INVALID_HANDLE) {$ENDIF} then
   begin
     WriteLn('Couldn''t open serial port: ', portname);
     result := false;
@@ -248,14 +272,14 @@ constructor TSerialObj.Create;
 begin
   inherited Create;
 
-  FHandle := -1;
+  {$IFNDEF WINDOWS}FHandle := -1{$ELSE}FHandle := ERROR_INVALID_HANDLE{$ENDIF};
   FBreakType := btShort;  // use shorter break sequence
   FBreakBaudRate := 1200; // baud rate for sending 0 to simulate a break signal
 end;
 
 destructor TSerialObj.Destroy;
 begin
-  if FHandle > -1 then
+  if {$IFNDEF WINDOWS}FHandle > -1{$ELSE}FHandle > ERROR_INVALID_HANDLE{$ENDIF} then
   begin
     SerClose(FHandle);
     FHandle := 0;
