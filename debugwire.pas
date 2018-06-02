@@ -42,7 +42,7 @@ type
 
   TDebugWire = class
   private
-    FBaud: integer;
+    //FBaud: integer;
     FSer: TSerialObj;
     FAddrFlag: byte;
     FTimersDisabled: boolean;
@@ -155,7 +155,12 @@ type
 implementation
 
 uses
-  math, baseunix, errors, unix;
+  math,
+  {$IFNDEF WINDOWS}
+  baseunix, errors, unix;
+  {$ELSE}
+  windows;
+  {$ENDIF}
 
 //type
 //  TBreakPointType = (bpHW, bpSW);
@@ -369,7 +374,7 @@ begin
   oldscale := 0;
   retries := 0;
   repeat
-    if FSer.SerialHandle < 0 then
+    if {$IFNDEF WINDOWS}FSer.SerialHandle < 0{$ELSE}not (FSer.SerialHandle > ERROR_INVALID_HANDLE){$ENDIF} then
     begin
       FLog('Invalid serial handle: ' + IntToStr(FSer.SerialHandle));
       system.Break;
@@ -442,10 +447,9 @@ end;
 function TDebugWire.BreakResponse: byte;
 var
   buf: array[0..1] of byte;
-  i, status: integer;
+  status: integer;
 begin
   FillChar(buf[0], length(buf), 0);
-  i := 0;
 
   FSer.Break;
 
@@ -454,12 +458,6 @@ begin
   begin
     status := FSer.ReadTimeout(buf[0], 1, 100);
   end;
-
-  //while status > 0 do
-  //begin
-  //  inc(i);
-  //  status := FSer.ReadTimeout(buf[0], 1, 100);
-  //end;
 
   if (buf[0] > 0) and (buf[0] < 255) then
   begin
@@ -513,7 +511,7 @@ begin
   len := FSer.ReadTimeout(values[0], count, 10*count);
   if len < count then
   begin
-    FLog('ReadData: len < count.  OS error: ' + IntToStr(fpgeterrno) + ' - ' + StrError(fpgeterrno));
+    FLog('ReadData: len < count.  OS error: ' + IntToStr(GetLastOSError) {+ ' - ' + StrError(GetLastOSError)});
     l2 := FSer.ReadTimeout(values[len], count - len, 10*(count - len));
     len := len + l2
   end;
@@ -912,7 +910,7 @@ procedure TDebugWire.FLoadPageBuffer(address: word; values: TBytes);
 var
   data: TBytes;
   i: byte;
-  tv: TTimeVal;
+  //tv: TTimeVal;
 begin
   SetLength(data, 3);
 
