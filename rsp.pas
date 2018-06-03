@@ -73,7 +73,7 @@ type
 implementation
 
 uses
-  {$IFNDEF WINDOWS}BaseUnix, sockets;
+  {$IFNDEF WINDOWS}BaseUnix, sockets, math;
   {$ELSE}winsock2, windows;
   {$ENDIF}
 

@@ -156,7 +156,7 @@ implementation
 
 uses
   {$IFNDEF WINDOWS}
-  baseunix, errors, unix;
+  baseunix, errors, unix, math;
   {$ELSE}
   windows;
   {$ENDIF}
