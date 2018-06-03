@@ -4,7 +4,7 @@ interface
 
 uses
   {$ifdef unix}cthreads,{$endif}
-  Classes, SysUtils, Sockets, fpAsync, fpSock,
+  Classes, SysUtils, ssockets, {fpAsync, fpSock,}
   math, debugwire, bpmanager;
 
 type
@@ -49,7 +49,7 @@ type
 
   { TGdbRspServer }
 
-  TGdbRspServer = class(TTCPServer)
+  TGdbRspServer = class(TInetServer{TTCPServer})
   private
     FActiveThread: TGdbRspThread;
     FActiveThreadRunning: boolean;
@@ -59,24 +59,35 @@ type
 
     procedure FLog(s: string);
     procedure FActiveThreadOnTerminate(Sender: TObject);
-    procedure FAcceptConnection(Sender: TConnectionBasedSocket; AStream: TSocketStream);
-    procedure FQueryConnect(Sender: TConnectionBasedSocket; Socket: Integer;
-    var accept: Boolean);
+    procedure FAcceptConnection(Sender: TObject; Data: TSocketStream);
+    procedure FQueryConnect(Sender: TObject; ASocket: LongInt; var doaccept: Boolean);
   public
     constructor Create(AOwner: TComponent);
     constructor Create(AOwner: TComponent; serialPort: string);
     constructor Create(AOwner: TComponent; serialPort: string; baud: integer);
-    procedure Listen(aport: Word);
+    procedure SerialConnect;
   end;
 
 implementation
 
 uses
-  BaseUnix;
+  {$IFNDEF WINDOWS}BaseUnix;
+  {$ELSE}winsock2;
+  {$ENDIF}
 
 function AddrToString(Addr: TSockAddr): String;
+{$IFDEF WINDOWS}
+//var
+
+{$ENDIF}
 begin
-  Result := NetAddrToStr(Addr.sin_addr) + ':' + IntToStr(Addr.sin_port);
+  {$IFNDEF WINDOWS}
+  Result := NetAddrToStr(Addr.sin_addr);
+  {$ELSE}
+  Result := inet_ntoa(Addr.sin_addr);
+  {$ENDIF}
+
+  Result := Result  + ':' + IntToStr(Addr.sin_port);
 end;
 
 procedure TGdbRspThread.FLog(s: string);
@@ -497,59 +508,60 @@ begin
 
   repeat
     try
-      timeout.tv_sec := 5;
-      timeout.tv_usec := 0;
-      serhandle := FDebugWire.Serial.SerialHandle;
-      tcphandle := FClientStream.Handle;
-      fpFD_ZERO(rdfd);
-      fpFD_ZERO(edfd);
-      fpFD_SET(tcphandle, rdfd);
-      fpFD_SET(tcphandle, edfd);
-      maxhandle := tcphandle;
-      fpFD_SET(serhandle, rdfd);
-      if serhandle > maxhandle then
-        maxhandle := serhandle;
-
-      if fpSelect(maxhandle+1, @rdfd, nil, @edfd, @timeout) > 0 then
-      begin
-        if (fpFD_ISSET(tcphandle, rdfd) > 0) then  // TCP data available
-        begin
-          count := FClientStream.Read(buf[0], length(buf));
-          //https://www.linuxquestions.org/questions/programming-9/how-could-server-detect-closed-client-socket-using-tcp-and-c-824615/
-          if (count = 0) then
-          begin
-            // simulate a kill command, it will delete hw BP and run target
-            // then exit this thread
-            buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
-            count := 5;
-            FLog('No data read, exiting read thread...');
-          end
-          else if (FDebugState = dsRunning) and (count > 0) then
-            FLog('Received data while running');
-        end;
-
-        if (count = 0) and (fpFD_ISSET(tcphandle, edfd) > 0) then
-        begin
-          // simulate a kill command, it will delete hw BP and run target
-          // then exit this thread
-          buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
-          count := 5;
-          FLog('Error reading socket handle, done...');
-        end;
-
-        if (FDebugState = dsRunning) and (fpFD_ISSET(serhandle, rdfd) > 0) then // Serial data available
-        begin
-          if FDebugWire.TrySync then
-          begin
-            FDebugState := dsPaused;
-            FDebugWire.Reconnect;
-            DebugStopReason(5, srHWBP);
-          end
-          else
-            FLog('Couldn''t detect break signal');
-        end;
-      end;
-
+      //timeout.tv_sec := 5;
+      //timeout.tv_usec := 0;
+      //serhandle := FDebugWire.Serial.SerialHandle;
+      //tcphandle := FClientStream.Handle;
+      //fpFD_ZERO(rdfd);
+      //fpFD_ZERO(edfd);
+      //fpFD_SET(tcphandle, rdfd);
+      //fpFD_SET(tcphandle, edfd);
+      //maxhandle := tcphandle;
+      //fpFD_SET(serhandle, rdfd);
+      //if serhandle > maxhandle then
+      //  maxhandle := serhandle;
+      //
+      //if fpSelect(maxhandle+1, @rdfd, nil, @edfd, @timeout) > 0 then
+      //begin
+      //  if (fpFD_ISSET(tcphandle, rdfd) > 0) then  // TCP data available
+      //  begin
+      //    count := FClientStream.Read(buf[0], length(buf));
+      //    //https://www.linuxquestions.org/questions/programming-9/how-could-server-detect-closed-client-socket-using-tcp-and-c-824615/
+      //    if (count = 0) then
+      //    begin
+      //      // simulate a kill command, it will delete hw BP and run target
+      //      // then exit this thread
+      //      buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
+      //      count := 5;
+      //      FLog('No data read, exiting read thread...');
+      //    end
+      //    else if (FDebugState = dsRunning) and (count > 0) then
+      //      FLog('Received data while running');
+      //  end;
+      //
+      //  if (count = 0) and (fpFD_ISSET(tcphandle, edfd) > 0) then
+      //  begin
+      //    // simulate a kill command, it will delete hw BP and run target
+      //    // then exit this thread
+      //    buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
+      //    count := 5;
+      //    FLog('Error reading socket handle, done...');
+      //  end;
+      //
+      //  if (FDebugState = dsRunning) and (fpFD_ISSET(serhandle, rdfd) > 0) then // Serial data available
+      //  begin
+      //    if FDebugWire.TrySync then
+      //    begin
+      //      FDebugState := dsPaused;
+      //      FDebugWire.Reconnect;
+      //      DebugStopReason(5, srHWBP);
+      //    end
+      //    else
+      //      FLog('Couldn''t detect break signal');
+      //  end;
+      //end;
+      //
+      count := FClientStream.Read(buf[0], length(buf));
       if count > 0 then
       begin
         msg := copy(buf, 1, count);
@@ -694,7 +706,7 @@ begin
       end;
     end;
   until Done;
-  FLog(AddrToString(FClientStream.PeerAddress) + ' disconnected');
+  //FLog(AddrToString(AddrToString(FClientStream.GetRemoteAddress)) + ' disconnected');
 
   // Update status of server thread
   OnTerminate(self);
@@ -717,12 +729,13 @@ begin
   halt;
 end;
 
-procedure TGdbRspServer.FAcceptConnection(Sender: TConnectionBasedSocket; AStream: TSocketStream);
+//TConnectEvent = Procedure (Sender : TObject; Data : TSocketStream) Of Object;
+procedure TGdbRspServer.FAcceptConnection(Sender: TObject; Data: TSocketStream);
 begin
   if not FActiveThreadRunning then
   begin
-    FLog('Incoming connection from ' + AddrToString(AStream.PeerAddress));
-    FActiveThread := TGdbRspThread.Create(AStream, FDebugWire, @self.FLog);
+    FLog('Incoming connection from ');// + AddrToString(AStream.PeerAddress));
+    FActiveThread := TGdbRspThread.Create(Data, FDebugWire, @self.FLog);
     FActiveThread.OnTerminate := @FActiveThreadOnTerminate;
     FActiveThreadRunning := true;
   end
@@ -732,32 +745,35 @@ begin
   end;
 end;
 
-procedure TGdbRspServer.FQueryConnect(Sender: TConnectionBasedSocket;
-  Socket: Integer; var accept: Boolean);
+//TConnectQuery = Procedure (Sender : TObject; ASocket : Longint; Var Allow : Boolean) of Object;
+procedure TGdbRspServer.FQueryConnect(Sender: TObject; ASocket: LongInt;
+  var doaccept: Boolean);
 begin
   if FActiveThreadRunning then
   begin
-    accept := false;
+    doaccept := false;
     FLog('Refusing new connection - already connected');
-    CloseSocket(Socket);
+    //CloseSocket(Socket);
   end
   else
   begin
-    accept := true;
+    doaccept := true;
     FLog('Accepting new connection');
   end;
 end;
 
 constructor TGdbRspServer.Create(AOwner: TComponent);
 begin
-  inherited Create(AOwner);
+  inherited Create(2345);
   OnConnect := @FAcceptConnection;
-  OnQueryConnect := @FQueryConnect;
-  EventLoop := TEventLoop.Create;
+  OnConnectQuery := @FQueryConnect;
+  //EventLoop := TEventLoop.Create;
   FActiveThreadRunning := false;
 
   FDebugWire := TDebugWire.Create;
   FDebugWire.OnLog := @FLog;
+
+  SerialConnect;
 end;
 
 constructor TGdbRspServer.Create(AOwner: TComponent; serialPort: string);
@@ -774,7 +790,7 @@ begin
   Create(AOwner);
 end;
 
-procedure TGdbRspServer.Listen(aport: Word);
+procedure TGdbRspServer.SerialConnect;
 var
   targetOK: boolean;
 begin
@@ -786,8 +802,8 @@ begin
       FDebugWire.BreakCmd;
       targetOK := FDebugWire.IdentifyTarget;
     end;
-  end
-  else  // no port name specified, scan possible candidates
+  end;
+{  else  // no port name specified, scan possible candidates
   begin
     if FDebugWire.Connect('/dev/ttyUSB0', FBaud) then
     begin
@@ -807,18 +823,22 @@ begin
       targetOK := FDebugWire.IdentifyTarget;
     end;
   end;
-
+}
+  //targetOK := true;
   if targetOK then
   begin
     FDebugWire.Reset;   // reset MCU
-    Self.Port := aport;
-    self.Active := true;
-    FLog('Listening on port: ' + IntToStr(aport));
-    EventLoop.Run;    // doesn't yet close
-    FLog('Closing...');
+    //Self.Port := aport;
+    //self.Active := true;
+    //FLog('Listening on port: ' + IntToStr(aport));
+    //EventLoop.Run;    // doesn't yet close
+    //FLog('Closing...');
   end
   else
+  begin
     FLog('Target not started...');
+    MaxConnections := 0;  // effectively stop listening
+  end;
 end;
 
 end.
