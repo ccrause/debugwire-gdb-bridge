@@ -155,22 +155,11 @@ type
 implementation
 
 uses
-  math,
   {$IFNDEF WINDOWS}
   baseunix, errors, unix;
   {$ELSE}
   windows;
   {$ENDIF}
-
-//type
-//  TBreakPointType = (bpHW, bpSW);
-//
-//  TBreakPoint = record
-//    BreakPointType: TBreakPointType;    // hardware or software BP
-//    address: word;                      // byte address, should fall on word boundary (even byte)
-//    //extendedOpCode: boolean;            // 32 bit op code (call, jmp, lds, sts), need special care
-//    originalOpCode: word;               // Opcode replaced by software break opcode
-//  end;
 
 const
   FRegCacheStart = 28;   // Start caching from R28

@@ -4,8 +4,7 @@ interface
 
 uses
   {$ifdef unix}cthreads,{$endif}
-  Classes, SysUtils, ssockets, {fpAsync, fpSock,}
-  math, debugwire, bpmanager;
+  Classes, SysUtils, ssockets, debugwire, bpmanager;
 
 type
 
@@ -554,10 +553,6 @@ var
   msg, cmd : String;
   buf: array[0..1023] of char;
   count, i, j, idstart, idend, addr: integer;
-  rdfd, edfd: TFDSet;
-  timeout: TTimeVal;
-  maxhandle: integer;
-  serhandle, tcphandle: THandle;
   Done: boolean;
 begin
   Done := false;
@@ -737,7 +732,6 @@ begin
       end;
     end;
   until Done;
-  //FLog(AddrToString(AddrToString(FClientStream.GetRemoteAddress)) + ' disconnected');
 
   // Update status of server thread
   OnTerminate(self);
@@ -760,7 +754,6 @@ begin
   halt;
 end;
 
-//TConnectEvent = Procedure (Sender : TObject; Data : TSocketStream) Of Object;
 procedure TGdbRspServer.FAcceptConnection(Sender: TObject; Data: TSocketStream);
 begin
   if not FActiveThreadRunning then
@@ -776,7 +769,6 @@ begin
   end;
 end;
 
-//TConnectQuery = Procedure (Sender : TObject; ASocket : Longint; Var Allow : Boolean) of Object;
 procedure TGdbRspServer.FQueryConnect(Sender: TObject; ASocket: LongInt;
   var doaccept: Boolean);
 begin
@@ -784,7 +776,6 @@ begin
   begin
     doaccept := false;
     FLog('Refusing new connection - already connected');
-    //CloseSocket(Socket);
   end
   else
   begin
@@ -798,7 +789,6 @@ begin
   inherited Create(2345);
   OnConnect := @FAcceptConnection;
   OnConnectQuery := @FQueryConnect;
-  //EventLoop := TEventLoop.Create;
   FActiveThreadRunning := false;
 
   FDebugWire := TDebugWire.Create;
