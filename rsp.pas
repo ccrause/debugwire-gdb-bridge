@@ -74,7 +74,7 @@ type
 implementation
 
 uses
-  {$IFNDEF WINDOWS}BaseUnix;
+  {$IFNDEF WINDOWS}BaseUnix, sockets;
   {$ELSE}winsock2, windows;
   {$ENDIF}
 
@@ -175,7 +175,7 @@ begin
   FDS := Default(TFDSet);
   fpFD_Zero(FDS);
   fpFD_Set(self.FClientStream.Handle, FDS);
-  Result := fpSelect(FSocket + 1, @FDS, nil, nil, @TimeV) > 0;
+  Result := fpSelect(self.FClientStream.Handle + 1, @FDS, nil, nil, @TimeV) > 0;
 {$else}
 {$ifdef windows}
   FDS := Default(TFDSet);
