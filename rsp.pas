@@ -30,6 +30,9 @@ type
     procedure gdb_response(data: TBytes);
     procedure gdb_qSupported(cmd: string);
 
+    function FTCPDataAvailable: boolean;
+    function FSerialDataAvailable: boolean;
+
     // Debugwire interface
     procedure DebugContinue;
     procedure DebugStep;
@@ -72,7 +75,7 @@ implementation
 
 uses
   {$IFNDEF WINDOWS}BaseUnix;
-  {$ELSE}winsock2;
+  {$ELSE}winsock2, windows;
   {$ENDIF}
 
 function AddrToString(Addr: TSockAddr): String;
@@ -154,6 +157,60 @@ begin
     gdb_response('Text=0;Data=0;Bss=0')
   else if pos('Symbol', cmd) > 0 then
     gdb_response('OK');
+end;
+
+function TGdbRspThread.FTCPDataAvailable: boolean;
+{$if defined(unix) or defined(windows)}
+var
+  FDS: TFDSet;
+  TimeV: TTimeVal;
+{$endif}
+begin
+  Result:=False;
+{$if defined(unix) or defined(windows)}
+  TimeV.tv_usec := 1 * 1000;  // 1 msec
+  TimeV.tv_sec := 0;
+{$endif}
+{$ifdef unix}
+  FDS := Default(TFDSet);
+  fpFD_Zero(FDS);
+  fpFD_Set(self.FClientStream.Handle, FDS);
+  Result := fpSelect(FSocket + 1, @FDS, nil, nil, @TimeV) > 0;
+{$else}
+{$ifdef windows}
+  FDS := Default(TFDSet);
+  FD_Zero(FDS);
+  FD_Set(self.FClientStream.Handle, FDS);
+  Result := Select(self.FClientStream.Handle + 1, @FDS, nil, nil, @TimeV) > 0;
+{$endif}
+{$endif}
+end;
+
+function TGdbRspThread.FSerialDataAvailable: boolean;
+{$if defined(unix)}
+var
+  FDS: TFDSet;
+  TimeV: TTimeVal;
+{$else}
+var
+  eventMask: dword;
+{$endif}
+begin
+  Result:=False;
+{$if defined(unix)}
+  TimeV.tv_usec := 10 * 1000;  // 10 msec
+  TimeV.tv_sec := 0;
+  FDS := Default(TFDSet);
+  fpFD_Zero(FDS);
+  fpFD_Set(self.FDebugWire.Serial.SerialHandle, FDS);
+  Result := fpSelect(self.FDebugWire.Serial.SerialHandle + 1, @FDS, nil, nil, @TimeV) > 0;
+{$elseif defined(windows)}
+  eventMask := EV_BREAK or EV_RXCHAR;  // signal on BREAK or any other char
+  SetCommMask(self.FDebugWire.Serial.SerialHandle, eventMask);
+  eventMask := 0;
+  WaitCommEvent(self.FDebugWire.Serial.SerialHandle, eventMask, nil);
+  result := eventMask and (EV_BREAK or EV_RXCHAR) > 0;
+{$endif}
 end;
 
 procedure TGdbRspThread.DebugContinue;
@@ -508,60 +565,34 @@ begin
 
   repeat
     try
-      //timeout.tv_sec := 5;
-      //timeout.tv_usec := 0;
-      //serhandle := FDebugWire.Serial.SerialHandle;
-      //tcphandle := FClientStream.Handle;
-      //fpFD_ZERO(rdfd);
-      //fpFD_ZERO(edfd);
-      //fpFD_SET(tcphandle, rdfd);
-      //fpFD_SET(tcphandle, edfd);
-      //maxhandle := tcphandle;
-      //fpFD_SET(serhandle, rdfd);
-      //if serhandle > maxhandle then
-      //  maxhandle := serhandle;
-      //
-      //if fpSelect(maxhandle+1, @rdfd, nil, @edfd, @timeout) > 0 then
-      //begin
-      //  if (fpFD_ISSET(tcphandle, rdfd) > 0) then  // TCP data available
-      //  begin
-      //    count := FClientStream.Read(buf[0], length(buf));
-      //    //https://www.linuxquestions.org/questions/programming-9/how-could-server-detect-closed-client-socket-using-tcp-and-c-824615/
-      //    if (count = 0) then
-      //    begin
-      //      // simulate a kill command, it will delete hw BP and run target
-      //      // then exit this thread
-      //      buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
-      //      count := 5;
-      //      FLog('No data read, exiting read thread...');
-      //    end
-      //    else if (FDebugState = dsRunning) and (count > 0) then
-      //      FLog('Received data while running');
-      //  end;
-      //
-      //  if (count = 0) and (fpFD_ISSET(tcphandle, edfd) > 0) then
-      //  begin
-      //    // simulate a kill command, it will delete hw BP and run target
-      //    // then exit this thread
-      //    buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
-      //    count := 5;
-      //    FLog('Error reading socket handle, done...');
-      //  end;
-      //
-      //  if (FDebugState = dsRunning) and (fpFD_ISSET(serhandle, rdfd) > 0) then // Serial data available
-      //  begin
-      //    if FDebugWire.TrySync then
-      //    begin
-      //      FDebugState := dsPaused;
-      //      FDebugWire.Reconnect;
-      //      DebugStopReason(5, srHWBP);
-      //    end
-      //    else
-      //      FLog('Couldn''t detect break signal');
-      //  end;
-      //end;
-      //
-      count := FClientStream.Read(buf[0], length(buf));
+
+      if FTCPDataAvailable then
+      begin
+        count := FClientStream.Read(buf[0], length(buf));
+        // if socket signaled and no data available -> connection closed
+        if count = 0 then
+        begin
+          // simulate a kill command, it will delete hw BP and run target
+          // then exit this thread
+          buf[0]:='$'; buf[1]:='k'; buf[2]:='#'; buf[3]:='0'; buf[4]:='0';  // CRC is not checked...
+          count := 5;
+          FLog('No data read, exiting read thread by simulating [k]ill...');
+        end;
+      end
+      else
+        count := 0;
+
+      // If running target, check check for break
+      if FDebugState = dsRunning then
+      begin
+        if FDebugWire.TrySync then
+        begin
+          FDebugState := dsPaused;
+          FDebugWire.Reconnect;
+          DebugStopReason(5, srHWBP);
+        end
+      end;
+
       if count > 0 then
       begin
         msg := copy(buf, 1, count);
