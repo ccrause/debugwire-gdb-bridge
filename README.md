@@ -2,6 +2,8 @@
 ## Work in progress...
 This is a Pascal implementation of the debugwire protocol for small AVR controllers such as attiny85 or atmega328P. It includes a gdb remote serial protocol implementation so that avr-gdb can communicate with the debugwire code to debug on chip code. The aim is to focus on features that would enable one to use Lazarus to both write code for and debug the generated code on compatible AVR microcontrollers.
 
+Extensively tested on Linux using FTDI's FT232RL chip of an Arduino Nano.  Briefly tested with a CP2102 USB-serial converter.  Based on the [dwire-debug project](https://github.com/dcwbrown/dwire-debug) the CH340 USB-serial converter also works.  Basically any USB-serial converter that supports custom baud rates and either the break serial command or can send a clean binary zero byte at low baud should work.
+
 Based on the following sources:  
 http://www.ruemohr.org/docs/debugwire.html  
 https://github.com/dcwbrown/dwire-debug  
