@@ -16,6 +16,7 @@ https://github.com/jbtronics/WireDebugger
   * ~~Put first BP in HW~~ Done
   * ~~Further BP in list, with corresponding opcode replaced with break (flash write). Store opcode in manager.~~ Done
   * ~~If HW BP deleted, keep HW BP open until next BP is set to minimize flash rewrites.~~ Done
+* Scan (BreakResponse) candidate ports automatically - perhaps check port type and scan if a real serial port (hardware or usb) and can be opened exlusively. See this link (https://stackoverflow.com/a/1394301) for Windows and this link (https://stackoverflow.com/questions/2530096/how-to-find-all-serial-devices-ttys-ttyusb-on-linux-without-opening-them) for Linux.
 * Add elf reader - long term, low priority.
 * ~~Incorporate notes from https://www.embecosm.com/appnotes/ean4/embecosm-howto-rsp-server-ean4-issue-2.html#id3077923.~~
 * ~~Add Windows support for serial functions and network socket.~~ Not well tested yet...
