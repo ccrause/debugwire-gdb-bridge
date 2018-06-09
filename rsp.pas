@@ -824,36 +824,10 @@ begin
       targetOK := FDebugWire.IdentifyTarget;
     end;
   end;
-{  else  // no port name specified, scan possible candidates
-  begin
-    if FDebugWire.Connect('/dev/ttyUSB0', FBaud) then
-    begin
-      FDebugWire.BreakCmd;
-      targetOK := FDebugWire.IdentifyTarget;
-    end;
 
-    if not (targetOK) and FDebugWire.Connect('/dev/ttyACM1', FBaud) then
-    begin
-      FDebugWire.BreakCmd;
-      targetOK := FDebugWire.IdentifyTarget;
-    end;
-
-    if not (targetOK) and FDebugWire.Connect('/dev/ttyACM0', FBaud) then
-    begin
-      FDebugWire.BreakCmd;
-      targetOK := FDebugWire.IdentifyTarget;
-    end;
-  end;
-}
-  //targetOK := true;
   if targetOK then
   begin
     FDebugWire.Reset;   // reset MCU
-    //Self.Port := aport;
-    //self.Active := true;
-    //FLog('Listening on port: ' + IntToStr(aport));
-    //EventLoop.Run;    // doesn't yet close
-    //FLog('Closing...');
   end
   else
   begin
