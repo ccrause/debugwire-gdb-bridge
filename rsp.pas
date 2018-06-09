@@ -64,9 +64,9 @@ type
     procedure FAcceptConnection(Sender: TObject; Data: TSocketStream);
     procedure FQueryConnect(Sender: TObject; ASocket: LongInt; var doaccept: Boolean);
   public
-    constructor Create(AOwner: TComponent);
-    constructor Create(AOwner: TComponent; serialPort: string);
-    constructor Create(AOwner: TComponent; serialPort: string; baud: integer);
+    constructor Create(APort: Word);
+    constructor Create(APort: Word; serialPort: string);
+    constructor Create(APort: Word; serialPort: string; baud: integer);
     procedure SerialConnect;
   end;
 
@@ -784,9 +784,9 @@ begin
   end;
 end;
 
-constructor TGdbRspServer.Create(AOwner: TComponent);
+constructor TGdbRspServer.Create(APort: Word);
 begin
-  inherited Create(2345);
+  inherited Create(APort);
   OnConnect := @FAcceptConnection;
   OnConnectQuery := @FQueryConnect;
   FActiveThreadRunning := false;
@@ -797,18 +797,18 @@ begin
   SerialConnect;
 end;
 
-constructor TGdbRspServer.Create(AOwner: TComponent; serialPort: string);
+constructor TGdbRspServer.Create(APort: Word; serialPort: string);
 begin
   FSerialPort := serialPort;
   FBaud := 0;
-  Create(AOwner);
+  Create(APort);
 end;
 
-constructor TGdbRspServer.Create(AOwner: TComponent; serialPort: string; baud: integer);
+constructor TGdbRspServer.Create(APort: Word; serialPort: string; baud: integer);
 begin
   FSerialPort := serialPort;
   FBaud := baud;
-  Create(AOwner);
+  Create(APort);
 end;
 
 procedure TGdbRspServer.SerialConnect;
