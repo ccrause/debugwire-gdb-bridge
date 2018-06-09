@@ -20,7 +20,7 @@ I've extensively tested both FTDI's FT232 and the CP2102 USB-serial converters.
  * Support custom baud rates (debugWIRE defualts to a baud rate of MCU clock / 128)
  * Support for either issuing a serial break or sending #0 at low (c.a. 19200) baud.
  Sending a #0 further requires a driver to switch baud rates very fast to allow
- reading the response following the brek command
+ reading the response following the break command
 
 ## AVR microcontrollers
 In principle this project should work on any debugWIRE compatiple controller,
