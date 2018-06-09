@@ -17,7 +17,7 @@ I've extensively tested both FTDI's FT232 and the CP2102 USB-serial converters.
  Success using the [PL-2303HX](https://github.com/dcwbrown/dwire-debug/issues/37) and
  the [CH340](https://github.com/dcwbrown/dwire-debug) converters have also been reported elsewhere.
  Any serial device can be used as long as it (and the OS driver) provides the following functionality:
- * Support custom baud rates (debugWIRE defualts to a baud rate of MCU clock / 128)
+ * Support custom baud rates (debugWIRE defaults to a baud rate of MCU clock / 128)
  * Support for either issuing a serial break or sending #0 at low (c.a. 19200) baud.
  Sending a #0 further requires a driver to switch baud rates very fast to allow
  reading the response following the break command
