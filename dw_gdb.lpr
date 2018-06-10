@@ -10,11 +10,12 @@ const
 
 var
   rspserver: TGdbRspServer;
-  opts: array [0..4] of TOption;
+  opts: array [0..5] of TOption;
   c: char;
   TcpPort: word;
   ID, baud: integer;
   serialPort: string;
+  DisableDWENfuse: boolean;
 
 procedure printHelp;
 begin
@@ -31,11 +32,44 @@ begin
   WriteLn('-B <bd>, --baud=<bd>');
   WriteLn('Connect to serial port using baud rate <bd>.  If not specified, the debugWIRE baud rate will be scanned automatically.');
   WriteLn('');
-  WriteLn('-T <tp>, --TcpPort=<tp>');
+  WriteLn('-T <tp>, --tcpport=<tp>');
   WriteLn('Set GDB server to listen on TCP port <tp>.  If not specified, TCP port defaults to 2345.');
+  WriteLn('');
+  WriteLn('-I, -i, --ispenable');
+  WriteLn('Temporarily disable DWEN fuse to enable ISP functionality.');
   WriteLn('');
   WriteLn('-H, -h, -?, --help');
   WriteLn('Display this help');
+end;
+
+procedure DisableDWEN;
+var
+  dw: TDebugWire;
+begin
+  if serialPort <> '' then
+  begin
+    dw := TDebugWire.Create;
+    try
+      if dw.Connect(serialPort,baud) then
+      begin
+        dw.BreakCmd;
+        if dw.IdentifyTarget then
+        begin
+          dw.DisableDWEN;
+          WriteLn('DWEN temporarily disabled until power to controller is cycled.');
+          WriteLn('Connect ISP now to change fuses.');
+        end
+        else
+          WriteLn('ERROR - Failed to connect to device.');
+      end
+      else
+        WriteLn('ERROR - couldn''t open serial port.');
+    finally
+      dw.Free;
+    end;
+  end
+  else
+    WriteLn('Please specify serial port');
 end;
 
 begin
@@ -61,15 +95,21 @@ begin
 
   opts[4].Flag := nil;
   opts[4].Has_arg := 0;
-  opts[4].Name := '';
-  opts[4].Value := #0;
+  opts[4].Name := 'ispenable';
+  opts[4].Value := 'I';
+
+  opts[5].Flag := nil;
+  opts[5].Has_arg := 0;
+  opts[5].Name := '';
+  opts[5].Value := #0;
 
   serialPort := '';
   baud := 0;
   TcpPort := DefaultTcpPort;
+  DisableDWENfuse := false;
 
   repeat
-    c := GetLongOpts('S:s:B:b:T:t:Hh?', @opts[0], ID);
+    c := GetLongOpts('S:s:B:b:T:t:Hh?Ii', @opts[0], ID);
     case c of
       'S','s': serialPort := OptArg;
       'B', 'b': baud := StrToInt(OptArg);
@@ -79,34 +119,42 @@ begin
           printHelp;
           Halt;
         end;
+      'I', 'i':  DisableDWENfuse := true;
     end;
   until c = EndOfOptions;
 
-  if TcpPort = 0 then
-    TcpPort := 2345;
-
-  // My defaults...
-  if serialPort = '' then
-    {$ifdef WINDOWS}
-    rspserver := TGdbRspServer.Create(TcpPort, '\COM3', 62500)
-    {$else}
-    rspserver := TGdbRspServer.Create(TcpPort, '/dev/ttyUSB0', 62500)
-    {$endif}
+  if DisableDWENfuse then
+  begin
+    DisableDWEN;
+  end
   else
   begin
-    if baud > 0 then
-      rspserver := TGdbRspServer.Create(TcpPort, serialPort, baud)
-    else // auto scan baud rate
-      rspserver := TGdbRspServer.Create(TcpPort, serialPort);
-  end;
+    if TcpPort = 0 then
+      TcpPort := 2345;
 
-  // Keep server running, FQueryConnect will reject connections while TGdbRspThread is running with current connection
-  // Server will close down once MaxConnections is reached.  Could then wait on Connection thread to finish?
-  if rspserver.MaxConnections <> 0 then
-  begin
-    WriteLn('Start accepting...');
-    rspserver.StartAccepting;
+    // My defaults...
+    if serialPort = '' then
+      {$ifdef WINDOWS}
+      rspserver := TGdbRspServer.Create(TcpPort, '\COM3', 62500)
+      {$else}
+      rspserver := TGdbRspServer.Create(TcpPort, '/dev/ttyUSB0', 62500)
+      {$endif}
+    else
+    begin
+      if baud > 0 then
+        rspserver := TGdbRspServer.Create(TcpPort, serialPort, baud)
+      else // auto scan baud rate
+        rspserver := TGdbRspServer.Create(TcpPort, serialPort);
+    end;
+
+    // Keep server running, FQueryConnect will reject connections while TGdbRspThread is running with current connection
+    // Server will close down once MaxConnections is reached.  Could then wait on Connection thread to finish?
+    if rspserver.MaxConnections <> 0 then
+    begin
+      WriteLn('Start accepting...');
+      rspserver.StartAccepting;
+    end;
+    WriteLn('Done...');
+    rspserver.Free;
   end;
-  WriteLn('Done...');
-  rspserver.Free;
 end.
