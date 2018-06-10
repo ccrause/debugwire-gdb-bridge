@@ -12,8 +12,14 @@ DebugWIRE is a single wire serial like protocol that communicates with the micro
  this resistor will probably depend on the value of the reset pull-up resistor,
  the serial converter impedance and the operating voltage of the controller.
 
+  Notes on the reset pin:
+* The value of the pull-up resistor should not be less than 10 kOhm
+* No capacitor should be connected - this means that e.g. Arduino boards with
+ compatible controllers (Uno, Nano etc.) needs to be modified to cut the reset capacitor connection
+[1](https://awtfy.com/2010/02/21/modify-an-arduino-for-debugwire/),
+[2](https://sites.google.com/site/wayneholder/debugwire3).
 ## Suitable serial drivers/converters
-I've extensively tested both FTDI's FT232 and the CP2102 USB-serial converters.
+I've extensively tested both FT232 and CP2102 USB-serial converters.
  Success using the [PL-2303HX](https://github.com/dcwbrown/dwire-debug/issues/37) and
  the [CH340](https://github.com/dcwbrown/dwire-debug) converters have also been reported elsewhere.
  Any serial device can be used as long as it (and the OS driver) provides the following functionality:
@@ -26,3 +32,15 @@ I've extensively tested both FTDI's FT232 and the CP2102 USB-serial converters.
 In principle this project should work on any debugWIRE compatiple controller,
  provided that the needed information is present in the DeviceInfo list in debugwire.pas.
  It has been tested extensively on an ATtiny45.
+
+## Manage debugWIRE/ISP functionality
+The debugWIRE functionality is disabled by default. Enable the DWEN fuse using ISP.
+ Once the DWEN fuse is set, no more communication over ISP will be possible until
+ DWEN is disabled. One should therefore set all relevant fuses over ISP before setting DWEN.
+ Note that the SPIEN fuse should preferably be left enabled so that ISP will work if
+ DWEN is disabled. To enable ISP mode, disable the DWEN fuse over debugWIRE,
+ this will disable debugWIRE temporarily. Then without removing power to the
+ controller, disable the DWEN fuse over ISP. Alternatively DWEN can be disabled
+ using high voltage ISP.
+
+<TODO: add option to disable DWEN>
