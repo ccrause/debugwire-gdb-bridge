@@ -135,7 +135,7 @@ Ending remote debugging.
 11:01:26.891  FActiveThreadOnTerminate
 ```
 
-#Deactivating DWEN
+# Deactivating DWEN
 Temporarily disable DWEN:  
 ```bash
 ~/LazProjs/debugwire-gdb-bridge $ ./dw_gdb -s /dev/ttyUSB0  -b 62500 -i  
