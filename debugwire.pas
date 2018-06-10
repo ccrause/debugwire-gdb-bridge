@@ -140,6 +140,7 @@ type
     // Execute single step and wait for break signal
     procedure Step;
 
+    procedure DisableDWEN;
     property PortName: string read FSer.portName;
     property Device: TDeviceInfo read FDevice;
     property TimersDisabled: boolean read FTimersDisabled write FTimersDisabledProc;
@@ -1260,6 +1261,13 @@ begin
 
   Sync;
   Reconnect;
+end;
+
+procedure TDebugWire.DisableDWEN;
+begin
+  SendData(byte(CMD_DISABLE));
+  // Empty serial buffer
+  FPushSerialBuffer;
 end;
 
 end.
