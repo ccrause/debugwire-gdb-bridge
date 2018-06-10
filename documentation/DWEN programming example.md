@@ -1,14 +1,15 @@
 # Activating DWEN
 Start by inspeting current fuse settings:  
-`~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24  
+```bash
+~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24  
 avrdude: AVR device initialized and ready to accept instructions  
 Reading | ################################################## | 100% 0.00s  
 avrdude: Device signature = 0x1e910b (probably t24)  
 avrdude: safemode: Fuses OK (E:FF, H:DF, L:E2)  
-avrdude done.  Thank you.`  
+avrdude done.  Thank you.``` 
 
 Set DWEN fuse (HFUSE: DF -> 9F):  
-`~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24 -U hfuse:w:0x9f:m  
+```~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24 -U hfuse:w:0x9f:m  
 avrdude: AVR device initialized and ready to accept instructions  
 Reading | ################################################## | 100% 0.00s  
 avrdude: Device signature = 0x1e910b (probably t24)  
@@ -24,10 +25,11 @@ Reading | ################################################## | 100% 0.00s
 avrdude: verifying ...  
 avrdude: 1 bytes of hfuse verified  
 avrdude: safemode: Fuses OK (E:FF, H:9F, L:E2)  
-avrdude done.  Thank you.`
+avrdude done.  Thank you.```
 
 Check if ISP works:  
-`~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24   
+```bash
+~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24   
 avrdude: stk500v2_command(): command failed  
 avrdude: initialization failed, rc=-1  
          Double check connections and try again, or use -F to override  
@@ -35,7 +37,8 @@ avrdude: initialization failed, rc=-1
 avrdude done.  Thank you.`
 
 Now start dw_gdb:  
-`~/LazProjs/debugwire-gdb-bridge $ ./dw_gdb -s /dev/ttyUSB0   
+```bash
+~/LazProjs/debugwire-gdb-bridge $ ./dw_gdb -s /dev/ttyUSB0   
 11:00:48.682  BAUD: 200000. Data: 56. Bin: 00111000  
 11:00:48.682  Scale = 70%  
 11:00:48.685  BAUD: 140000. Data: 206. Bin: 11001110  
@@ -62,10 +65,11 @@ Now start dw_gdb:
 11:00:48.723  Device ID: $910B [ATtiny24]  
 11:00:48.793  PC: $0000  
 11:00:48.796  R28: $D5, R29: $00, R30: $9C, R31: $00  
-Start accepting...`
+Start accepting...```
 
 Connect to dw_gdb using gdb compiled for AVR target:  
-`(gdb) target remote :2345  
+```bash
+(gdb) target remote :2345  
 Remote debugging using :2345  
 warning: No executable has been specified and target does not support  
 determining executable automatically.  Try using the "file" command.  
@@ -111,29 +115,36 @@ determining executable automatically.  Try using the "file" command.
 11:01:13.412  -> +$qL1160000000000000000#55  
 11:01:13.412  <- +  
 11:01:13.412  <- $#00  
-11:01:13.456  -> +`
+11:01:13.456  -> +
+```
 
-`(gdb) detach  
+```bash
+(gdb) detach  
 Detaching from program: , Remote target  
 Ending remote debugging.`  
 
 `11:01:26.887  -> $D#44  
 11:01:26.888  <- +  
 11:01:26.888  <- $OK#9A  
-11:01:26.891  FActiveThreadOnTerminate`
+11:01:26.891  FActiveThreadOnTerminate
+```
 
 #Deactivating DWEN
 Temporarily disable DWEN:  
-`~/LazProjs/debugwire-gdb-bridge $ ./dw_gdb -s /dev/ttyUSB0  -b 62500 -i  
+```bash
+~/LazProjs/debugwire-gdb-bridge $ ./dw_gdb -s /dev/ttyUSB0  -b 62500 -i  
 DWEN temporarily disabled until power to controller is cycled.  
-Connect ISP now to change fuses.`
+Connect ISP now to change fuses.
+```
 
 Reconnect ISP and test ISP connection:  
-`~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24   
+```bash
+~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24   
 avrdude: AVR device initialized and ready to accept instructions  
 Reading | ################################################## | 100% 0.00s  
 avrdude: Device signature = 0x1e910b (probably t24)  
 avrdude: safemode: Fuses OK (E:FF, H:9F, L:E2)  
-avrdude done.  Thank you.`
+avrdude done.  Thank you.
+```
 
 One can now either reprogram the DWEN fuse and continue using ISP, or cycle power to controller and continue using dw_gdb.
