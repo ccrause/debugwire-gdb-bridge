@@ -8,7 +8,7 @@ avrdude: safemode: Fuses OK (E:FF, H:DF, L:E2)
 avrdude done.  Thank you.`  
 
 Set DWEN fuse (HFUSE: DF -> 9F):  
-'~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24 -U hfuse:w:0x9f:m
+`~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24 -U hfuse:w:0x9f:m
 avrdude: AVR device initialized and ready to accept instructions
 Reading | ################################################## | 100% 0.00s
 avrdude: Device signature = 0x1e910b (probably t24)
@@ -129,11 +129,11 @@ DWEN temporarily disabled until power to controller is cycled.
 Connect ISP now to change fuses.'
 
 Reconnect ISP and test ISP connection:  
-'~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24 
+`~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24 
 avrdude: AVR device initialized and ready to accept instructions
 Reading | ################################################## | 100% 0.00s
 avrdude: Device signature = 0x1e910b (probably t24)
 avrdude: safemode: Fuses OK (E:FF, H:9F, L:E2)
-avrdude done.  Thank you.'
+avrdude done.  Thank you.`
 
 One can now either reprogram the DWEN fuse and continue using ISP, or cycle power to controller and continue using dw_gdb.
