@@ -44,4 +44,6 @@ The debugWIRE functionality is disabled by default. Enable the DWEN fuse using I
  using high voltage ISP.
 
  To disable DWEN, one can specify `-i` or `--ispenable` on the command line. Full example:  
-  `dw_gdb s /dev/ttyUSB0 -b 62500 -i`
+  `dw_gdb -s /dev/ttyUSB0 -b 62500 -i
+
+Note: Remember to cycle power if you haven't disabled DWEN over ISP and want to restore debugWIRE funciotnality.
