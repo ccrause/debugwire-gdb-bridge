@@ -6,7 +6,8 @@ avrdude: AVR device initialized and ready to accept instructions
 Reading | ################################################## | 100% 0.00s  
 avrdude: Device signature = 0x1e910b (probably t24)  
 avrdude: safemode: Fuses OK (E:FF, H:DF, L:E2)  
-avrdude done.  Thank you.``` 
+avrdude done.  Thank you.
+``` 
 
 Set DWEN fuse (HFUSE: DF -> 9F):  
 ```~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24 -U hfuse:w:0x9f:m  
@@ -25,7 +26,8 @@ Reading | ################################################## | 100% 0.00s
 avrdude: verifying ...  
 avrdude: 1 bytes of hfuse verified  
 avrdude: safemode: Fuses OK (E:FF, H:9F, L:E2)  
-avrdude done.  Thank you.```
+avrdude done.  Thank you.
+```
 
 Check if ISP works:  
 ```bash
@@ -34,7 +36,8 @@ avrdude: stk500v2_command(): command failed
 avrdude: initialization failed, rc=-1  
          Double check connections and try again, or use -F to override  
          this check.  
-avrdude done.  Thank you.`
+avrdude done.  Thank you.
+```
 
 Now start dw_gdb:  
 ```bash
@@ -65,7 +68,8 @@ Now start dw_gdb:
 11:00:48.723  Device ID: $910B [ATtiny24]  
 11:00:48.793  PC: $0000  
 11:00:48.796  R28: $D5, R29: $00, R30: $9C, R31: $00  
-Start accepting...```
+Start accepting...
+```
 
 Connect to dw_gdb using gdb compiled for AVR target:  
 ```bash
@@ -121,9 +125,11 @@ determining executable automatically.  Try using the "file" command.
 ```bash
 (gdb) detach  
 Detaching from program: , Remote target  
-Ending remote debugging.`  
+Ending remote debugging.
+```
 
-`11:01:26.887  -> $D#44  
+```bash
+11:01:26.887  -> $D#44  
 11:01:26.888  <- +  
 11:01:26.888  <- $OK#9A  
 11:01:26.891  FActiveThreadOnTerminate
