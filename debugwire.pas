@@ -1030,7 +1030,7 @@ begin
 
       // Copy new data on top of existing data
       for i := 0 to remainingLength-1 do
-        page[i] := values[i];
+        page[i] := values[start + i];
 
       FWriteFlashPage(start, page);
     end;
