@@ -980,7 +980,7 @@ procedure TDebugWire.WriteFlash(start: word; const values: TBytes);
 var
   R0R1: TBytes;
   page: TBytes;
-  partLength, pageMask, PageStart, remainingLength: word;
+  partLength, pageMask, PageStart, remainingLength, currentIndex: word;
   len, i: byte;
 begin
   if start + length(values) > FDevice.flashSize then
@@ -996,6 +996,8 @@ begin
     // Cache R0 & R1
     ReadRegs(0, 2, R0R1);
 
+    currentIndex := 0;  // start at starting point of values
+
     // Check if start falls inside a page
     // If so, fill first part of page with existing content
     if (start and (FDevice.FlashPageSize - 1) > 0) then
@@ -1009,6 +1011,7 @@ begin
       FWriteFlashPage(PageStart, page);
       partLength := FDevice.FlashPageSize - ((FDevice.FlashPageSize - 1) and start);
       start := start + partLength;
+      currentIndex := currentIndex + partLength;
       if partLength < remainingLength then
         remainingLength := remainingLength - partLength
       else
@@ -1018,9 +1021,10 @@ begin
     // Whole pages
     while remainingLength > FDevice.FlashPageSize do
     begin
-      page := copy(values, start, FDevice.FlashPageSize);
+      page := copy(values, currentIndex, FDevice.FlashPageSize);
       FWriteFlashPage(start, page);
       start := start + FDevice.FlashPageSize;
+      currentIndex := currentIndex + FDevice.FlashPageSize;
       remainingLength := remainingLength - FDevice.FlashPageSize;
     end;
 
@@ -1030,7 +1034,7 @@ begin
 
       // Copy new data on top of existing data
       for i := 0 to remainingLength-1 do
-        page[i] := values[start + i];
+        page[i] := values[currentIndex + i];
 
       FWriteFlashPage(start, page);
     end;
