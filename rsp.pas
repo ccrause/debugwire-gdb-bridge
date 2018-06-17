@@ -151,7 +151,7 @@ end;
 procedure TGdbRspThread.gdb_qSupported(cmd: string);
 begin
   if pos('Supported', cmd) > 0 then
-    gdb_response('hwbreak+;swbreak+')
+    gdb_response('hwbreak+;swbreak+;')  //qXfer:memory-map:read+')
   else if pos('Offsets', cmd) > 0 then
     gdb_response('Text=0;Data=0;Bss=0')
   else if pos('Symbol', cmd) > 0 then
@@ -485,19 +485,30 @@ begin
   gdb_response('OK');
 end;
 
+// Supporting  qXfer:memory-map requires support for vFlashErase/vFlashWrite commands
+// to write to flash
+// Support for this disabled at the moment
 procedure TGdbRspThread.DebugMemoryMap;
+var
+  s: string;
 begin
-{recv: qXfer:memory-map:read::0,fff
-query: Xfer;memory-map:read::0,fff
-Xfer: type:memory-map;op:read;annex:;addr:0;length:4095
-send: m<?xml version="1.0"?><!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN"     "http://sourceware.org/gdb/gdb-memory-map.dtd"><memory-map>  <memory type="rom" start="0x00000000" length="0x20000"/>  <memory type="ram" start="0x20000000" length="0x5000"/>  <memory type="flash" start="0x08000000" length="0x20000">    <property name="blocksize">0x400</property>  </memory>  <memory type="ram" start="0x40000000" length="0x1fffffff"/>  <memory type="ram" start="0xe0000000" length="0x1fffffff"/>  <memory type="rom" start="0x1ffff000" length="0x800"/>  <memory type="rom" start="0x1ffff800" length="0x10"/></memory-map>
-recv: qXfer:memory-map:read::27c,d83
-query: Xfer;memory-map:read::27c,d83
-Xfer: type:memory-map;op:read;annex:;addr:636;length:3459
-send: l
-recv: m800010c,4
-send: 154880f3
-}
+  // Formatting from simavr
+  s := format('l<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
+              [FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
+
+  // This isn't accepted by gdb
+  //s := '<?xml version="1.0"?> '+ LineEnding +
+  //     '<!DOCTYPE memory-map '+ LineEnding +
+  //       'PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" '+ LineEnding +
+  //       '"http://sourceware.org/gdb/gdb-memory-map.dtd"> '+ LineEnding +
+  //     '<memory-map> '+ LineEnding +
+  //     '  <memory type="ram" start="0x800000" length="0x'+ HexStr(FDebugWire.Device.sramSize, 4) + '"/>'+ LineEnding +
+  //     '  <memory type="flash" start="0x00" length="0x'+ HexStr(FDebugWire.Device.flashSize, 4) +'">'+ LineEnding +
+  //     '    <property name="blocksize">0x'+ HexStr(FDebugWire.Device.FlashPageSize, 4) +'</property>'+ LineEnding +
+  //     '  </memory>'+ LineEnding +
+  //     '</memory-map>';
+
+  gdb_response(s);
 end;
 
 procedure TGdbRspThread.DebugStopReason(signal: integer;
@@ -560,7 +571,6 @@ begin
 
   repeat
     try
-
       if FTCPDataAvailable then
       begin
         count := FClientStream.Read(buf[0], length(buf));
@@ -605,7 +615,6 @@ begin
         end
         else
           FLog('-> ' + msg);
-
 
         i := pos('$', msg);  // start of command
         j := pos('#', msg);  // end of command
@@ -709,8 +718,8 @@ begin
 
             'q': if pos('Supported', cmd) > 0 then
                    gdb_qSupported(cmd)
-                 //else if cmd[2] = 'L' then
-                 //  gdb_response('qM0010000000000000000')
+                 //else if pos('Xfer:memory-map:read', cmd) > 0 then
+                 //  DebugMemoryMap
                  else
                    gdb_response('');
             else
