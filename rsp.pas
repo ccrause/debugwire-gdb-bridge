@@ -8,6 +8,8 @@ uses
 
 type
 
+  {.$DEFINE memorymap}
+
   { TGdbRspThread }
   TDebugState = (dsPaused, dsRunning);
   TDebugStopReason = (srCtrlC, srHWBP, srSWBP);
@@ -41,7 +43,9 @@ type
     procedure DebugSetRegister(cmd: string);
     procedure DebugGetMemory(cmd: string);
     procedure DebugSetMemory(cmd: string);
+    {$IFDEF memorymap}
     procedure DebugMemoryMap;
+    {$ENDIF memorymap}
     procedure DebugStopReason(signal: integer; stopReason: TDebugStopReason);
   public
     constructor Create(AClientStream: TSocketStream; dw: TDebugWire; logger: TLog);
@@ -151,7 +155,7 @@ end;
 procedure TGdbRspThread.gdb_qSupported(cmd: string);
 begin
   if pos('Supported', cmd) > 0 then
-    gdb_response('hwbreak+;swbreak+;')  //qXfer:memory-map:read+')
+    gdb_response('hwbreak+;swbreak+;' {$IFDEF memorymap} + 'qXfer:memory-map:read+' {$ENDIF memorymap})
   else if pos('Offsets', cmd) > 0 then
     gdb_response('Text=0;Data=0;Bss=0')
   else if pos('Symbol', cmd) > 0 then
@@ -488,28 +492,28 @@ end;
 // Supporting  qXfer:memory-map requires support for vFlashErase/vFlashWrite commands
 // to write to flash
 // Support for this disabled at the moment
+{$IFDEF memorymap}
 procedure TGdbRspThread.DebugMemoryMap;
 var
   s: string;
 begin
   // Formatting from simavr
-  s := format('l<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
-              [FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
+  //s := format('l<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
+  //            [FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
 
-  // This isn't accepted by gdb
-  //s := '<?xml version="1.0"?> '+ LineEnding +
-  //     '<!DOCTYPE memory-map '+ LineEnding +
-  //       'PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" '+ LineEnding +
-  //       '"http://sourceware.org/gdb/gdb-memory-map.dtd"> '+ LineEnding +
-  //     '<memory-map> '+ LineEnding +
-  //     '  <memory type="ram" start="0x800000" length="0x'+ HexStr(FDebugWire.Device.sramSize, 4) + '"/>'+ LineEnding +
-  //     '  <memory type="flash" start="0x00" length="0x'+ HexStr(FDebugWire.Device.flashSize, 4) +'">'+ LineEnding +
-  //     '    <property name="blocksize">0x'+ HexStr(FDebugWire.Device.FlashPageSize, 4) +'</property>'+ LineEnding +
-  //     '  </memory>'+ LineEnding +
-  //     '</memory-map>';
+   //This isn't accepted by gdb, although it is based example from online documentation
+  s := 'l<?xml version="1.0"?> '+ LineEnding +
+       '<!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" "http://sourceware.org/gdb/gdb-memory-map.dtd"> '+ LineEnding +
+       '<memory-map> '+ LineEnding +
+       '  <memory type="ram" start="0x800000" length="0x'+ HexStr(FDebugWire.Device.sramSize, 4) + '"/>'+ LineEnding +
+       '  <memory type="flash" start="0x00" length="0x'+ HexStr(FDebugWire.Device.flashSize, 4) +'">'+ LineEnding +
+       '    <property name="blocksize">0x'+ HexStr(FDebugWire.Device.FlashPageSize, 4) +'</property>'+ LineEnding +
+       '  </memory>'+ LineEnding +
+       '</memory-map>';
 
   gdb_response(s);
 end;
+{$ENDIF memorymap}
 
 procedure TGdbRspThread.DebugStopReason(signal: integer;
   stopReason: TDebugStopReason);
@@ -718,8 +722,10 @@ begin
 
             'q': if pos('Supported', cmd) > 0 then
                    gdb_qSupported(cmd)
-                 //else if pos('Xfer:memory-map:read', cmd) > 0 then
-                 //  DebugMemoryMap
+            {$IFDEF memorymap}
+                 else if pos('Xfer:memory-map:read', cmd) > 0 then
+                   DebugMemoryMap
+            {$ENDIF memorymap}
                  else
                    gdb_response('');
             else
