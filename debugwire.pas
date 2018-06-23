@@ -1000,9 +1000,9 @@ begin
 
     // Check if start falls inside a page
     // If so, fill first part of page with existing content
-    if (start and (FDevice.FlashPageSize - 1) > 0) then
+    PageStart := start and pageMask;
+    if (start > PageStart) then
     begin
-      PageStart := start and pageMask;
       ReadFlash(PageStart, FDevice.FlashPageSize, page);
       len := min(FDevice.FlashPageSize, length(values));
       for i := 0 to len-1 do
@@ -1142,17 +1142,21 @@ var
   data, res: byte;
 begin
   FPushSerialBuffer;
+
+  // Catch break signal
   repeat
     res := FSer.ReadTimeout(data, 1, 200);
     if res = 0 then
       Sleep(10);
   until (res > 0);
 
-  repeat
+  // Check response
+  while (data = 0) or (data = 255) do
+  begin
     res := FSer.ReadTimeout(data, 1, 200);
     if res = 0 then
       Sleep(10);
-  until (res > 0) and (data < 255);
+  end;
 
   if data = 85 then
     //FLog('Received $55')
