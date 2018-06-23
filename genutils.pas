@@ -17,6 +17,7 @@ var
   i: integer;
   colstart, colend: boolean;
 begin
+  result := '';
   for i := 0 to Length(data)-1 do
   begin
     colstart := (i mod cols) = 0;
