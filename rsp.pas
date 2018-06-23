@@ -8,11 +8,16 @@ uses
 
 type
 
-  {.$DEFINE memorymap}
+  { $DEFINE memorymap}
 
-  { TGdbRspThread }
+  {TGdbRspThread }
   TDebugState = (dsPaused, dsRunning);
   TDebugStopReason = (srCtrlC, srHWBP, srSWBP);
+
+  TFlashWriteBuffer = record
+    addr: word;
+    Data: TBytes;
+  end;
 
   // To view rsp communication as received by gdb:
   // (gdb) set debug remote 1
@@ -24,6 +29,8 @@ type
     FLogger: TLog;
     FBPManager: TBPManager;
     FLastCmd: string;  // in case a resend is required;
+
+    FFlashWriteBuffer: array of TFlashWriteBuffer;
     procedure FLog(s: string);
 
     function gdb_fieldSepPos(cmd: string): integer;
@@ -45,6 +52,11 @@ type
     procedure DebugSetMemory(cmd: string);
     {$IFDEF memorymap}
     procedure DebugMemoryMap;
+    procedure DecodeBinary(const s: string; out data: TBytes);
+    procedure EncodeBinary(const data: TBytes; out s: string);
+    procedure DebugFlashErase(cmd: string);
+    procedure DebugFlashWrite(cmd: string);
+    procedure DebugFlashWriteDone;
     {$ENDIF memorymap}
     procedure DebugStopReason(signal: integer; stopReason: TDebugStopReason);
   public
@@ -501,7 +513,7 @@ begin
   //s := format('l<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
   //            [FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
 
-   //This isn't accepted by gdb, although it is based example from online documentation
+   //This isn't accepted by gdb without the 'l', from simulavr
   s := 'l<?xml version="1.0"?> '+ LineEnding +
        '<!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" "http://sourceware.org/gdb/gdb-memory-map.dtd"> '+ LineEnding +
        '<memory-map> '+ LineEnding +
@@ -513,6 +525,142 @@ begin
 
   gdb_response(s);
 end;
+
+procedure TGdbRspThread.DecodeBinary(const s: string; out data: TBytes);
+var
+  i, j: integer;
+begin
+  SetLength(data, 128);
+  // s should start before ':', then scan until ending #
+  i := 1;
+  j := 0;
+
+  while (i <= length(s)) and (s[i] <> '#') do
+  begin
+    if s[i] = '}' then  // escape character
+    begin
+      inc(i);  // read next character
+      data[j] := ord(s[i]) XOR $20;
+    end
+    else if s[i] = '*' then //run length encoding
+    begin
+      FLog('Unexpected run length encoding detected.');
+    end
+    else
+    begin
+      data[j] := ord(s[i]);
+    end;
+    inc(i);
+    inc(j);
+    if j > length(data) then
+      SetLength(data, j + 128);
+  end;
+
+  SetLength(data, j);
+end;
+
+procedure TGdbRspThread.EncodeBinary(const data: TBytes; out s: string);
+var
+  i, j: integer;
+begin
+  SetLength(s, 128);
+
+  j := 1;
+  for i := 0 to high(data) do
+  begin
+    case data[i] of
+      $23, $24, $2A, $7D:
+        begin
+          s[j] := '}';
+          inc(j);
+          s[j] := char(data[i] XOR $20);
+        end
+      else
+        s[j] := char(data[i]);
+    end;
+
+    inc(j);
+    if j > length(s)-1 then
+      SetLength(s, Length(s) + 128);
+  end;
+  SetLength(s, j-1);
+end;
+
+// ‘vFlashErase:addr,length’
+procedure TGdbRspThread.DebugFlashErase(cmd: string);
+var
+  i, j: integer;
+  addr, len: integer;
+begin
+  i := pos(':', cmd);
+  j := pos(',', cmd);
+  if (i > 0) and (j > 0) and (j > i + 1) then
+  begin
+    addr := StrToInt('$'+copy(cmd, i+1, j-i-1));
+    len := StrToInt('$'+copy(cmd, j+1, length(cmd)));
+
+    // do nothing for now
+  end;
+  gdb_response('OK');
+end;
+
+// ‘vFlashWrite:addr:XX...’
+procedure TGdbRspThread.DebugFlashWrite(cmd: string);
+var
+  i, j: integer;
+  addr, len: integer;
+  data: TBytes;
+  newbuffer: boolean;
+begin
+  i := gdb_fieldSepPos(cmd);
+  delete(cmd, 1, i);
+  i := gdb_fieldSepPos(cmd);
+  addr := StrToInt('$' + copy(cmd, 1, i-1));
+  delete(cmd, 1, i);
+
+  DecodeBinary(cmd, data);
+
+  newbuffer := true;
+  i := length(FFlashWriteBuffer);
+  if i > 0 then
+  begin
+    j := length(FFlashWriteBuffer[i-1].Data);
+    if (FFlashWriteBuffer[i-1].addr + j) = addr then // contiguous memory, append to this buffer
+    begin
+      SetLength(FFlashWriteBuffer[i-1].Data, j + length(data));
+      Move(data[0], FFlashWriteBuffer[i-1].Data[j], length(data));
+      newbuffer := false;
+    end;
+  end;
+
+  if newbuffer then
+  begin
+    SetLength(FFlashWriteBuffer, i+1);
+    FFlashWriteBuffer[i].addr := addr;
+    FFlashWriteBuffer[i].Data := copy(data, 0, length(data));
+  end;
+
+  //FDebugWire.WriteFlash(addr, data);
+
+  gdb_response('OK');
+end;
+
+procedure TGdbRspThread.DebugFlashWriteDone;
+var
+  i, j: integer;
+begin
+  i := length(FFlashWriteBuffer);
+  if i > 0 then
+  begin
+    for j := 0 to i-1 do
+    begin
+      if length(FFlashWriteBuffer[j].Data) > 0 then
+        FDebugWire.WriteFlash(FFlashWriteBuffer[j].addr, FFlashWriteBuffer[j].Data);
+    end;
+    SetLength(FFlashWriteBuffer, 0);
+  end;
+end;
+
 {$ENDIF memorymap}
 
 procedure TGdbRspThread.DebugStopReason(signal: integer;
@@ -563,9 +711,23 @@ begin
   FBPManager := TBPManager.Create(FDebugWire, logger);
 end;
 
+function pos_(const c: char; const s: RawByteString): integer;
+var
+  i, j: integer;
+begin
+  i := 1;
+  j := length(s);
+  while (i < j) and (s[i] <> c) do
+    inc(i);
+
+  if s[i] = c then result := i
+  else
+  result := 0;
+end;
+
 procedure TGdbRspThread.Execute;
 var
-  msg, cmd : String;
+  msg, cmd : RawByteString;
   buf: array[0..1023] of char;
   count, i, j, idstart, idend, addr: integer;
   Done: boolean;
@@ -604,7 +766,9 @@ begin
 
       if count > 0 then
       begin
-        msg := copy(buf, 1, count);
+        SetLength(msg, count);
+        Move(buf[0], msg[1], count);
+        //msg := copy(buf, 1, count);
 
         // ctrl+c falls outside of normal gdb message structure
         if msg[1] = #3 then // ctrl+C
@@ -643,12 +807,21 @@ begin
                    DebugContinue;
                  end;
 
-            // step
-            's': begin
-                   // TODO: Check if stepping into a sw BP?
-                   DebugStep;
-                   DebugStopReason(5, srSWBP);
-                 end;
+            // detach, kill
+            // Reset and continue MCU - no way to kill target anyway
+            'D', 'k':
+              begin
+                Done := true;         // terminate debug connection
+                if cmd[1] = 'k' then  // kill handled as break/reset/run
+                  FDebugWire.Reset
+                else                  // assume detach leaves system in a runnable state
+                  gdb_response('OK');
+
+                //Done: call BP manager to remove HW & SW BPs
+                FBPManager.DeleteAllBPs;
+                FBPManager.FinalizeBPs;
+                FDebugWire.Run;
+              end;
 
             // read general registers 32 registers + SREG + PCL + PCH + PCHH
             'g': DebugGetRegisters;
@@ -659,9 +832,51 @@ begin
             // Set thread for operation - only 1 so just acknowledge
             'H': gdb_response('OK');
 
+            // Read memory
+            'm': DebugGetMemory(cmd);
+
+            // Write memory
+            // TODO: also support X - binary equivalent.
+            'M': DebugSetMemory(cmd);
+
+
             'p': DebugGetRegister(cmd);
 
             'P': DebugSetRegister(cmd);
+
+            'q': if pos('Supported', cmd) > 0 then
+                   gdb_qSupported(cmd)
+            {$IFDEF memorymap}
+                 else if pos('Xfer:memory-map:read', cmd) > 0 then
+                   DebugMemoryMap
+            {$ENDIF memorymap}
+                 else
+                   gdb_response('');
+
+            // step
+            's': begin
+                   // TODO: Check if stepping into a sw BP?
+                   DebugStep;
+                   DebugStopReason(5, srSWBP);
+                 end;
+            {$IFDEF memorymap}
+            'v': begin
+                   if pos('FlashErase', cmd) > 0 then
+                   begin
+                     DebugFlashErase(cmd);
+                   end
+                   else if pos('FlashWrite', cmd) > 0 then
+                   begin
+                     DebugFlashWrite(cmd);
+                   end
+                   else if pos('FlashDone', cmd) > 0 then
+                   begin
+                     DebugFlashWriteDone;
+                   end
+                   else
+                     gdb_response('');
+                 end;
+            {$ENDIF}
 
             // delete breakpoint
             'z': begin
@@ -696,38 +911,6 @@ begin
                    else  // other BPs such as watch points not supported
                      gdb_response('');
                  end;
-
-            // Read memory
-            'm': DebugGetMemory(cmd);
-
-            // Write memory
-            // TODO: also support X - binary equivalent.
-            'M': DebugSetMemory(cmd);
-
-            // detach, kill
-            // Reset and continue MCU - no way to kill target anyway
-            'D', 'k':
-              begin
-                Done := true;         // terminate debug connection
-                if cmd[1] = 'k' then  // kill handled as break/reset/run
-                  FDebugWire.Reset
-                else                  // assume detach leaves system in a runnable state
-                  gdb_response('OK');
-
-                //Done: call BP manager to remove HW & SW BPs
-                FBPManager.DeleteAllBPs;
-                FBPManager.FinalizeBPs;
-                FDebugWire.Run;
-              end;
-
-            'q': if pos('Supported', cmd) > 0 then
-                   gdb_qSupported(cmd)
-            {$IFDEF memorymap}
-                 else if pos('Xfer:memory-map:read', cmd) > 0 then
-                   DebugMemoryMap
-            {$ENDIF memorymap}
-                 else
-                   gdb_response('');
             else
               gdb_response('');
           end; // case
