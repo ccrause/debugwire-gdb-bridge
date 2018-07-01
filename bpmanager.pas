@@ -73,6 +73,12 @@ var
   i, j: integer;
   page: ^TFlashPageBPs;
 begin
+  if address >= FDebugWire.Device.flashSize then
+  begin
+    FLog('Error in AddBP - address exceeds flash size');
+    exit;
+  end;
+
   // First check hw BP
   // If not assigned yet, asign
   // if address matches previous address, enable
@@ -210,6 +216,13 @@ var
   PageAddr: dword;
   err: boolean;
 begin
+  // Out of range addresses rejected in AddBP, so just exit here, no need for further cleanup
+  if address >= FDebugWire.Device.flashSize then
+  begin
+    FLog('Error in DeleteBP - address exceeds flash size');
+    exit;
+  end;
+
   err := false;
   if HWBP.address = address then
     HWBP.active := false
