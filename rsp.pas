@@ -111,7 +111,7 @@ end;
 procedure TGdbRspThread.FLog(s: string);
 begin
   if Assigned(FLogger) then
-    Flogger({TimeToStr(Now) + ' : ' +} s);
+    Flogger(s);
 end;
 
 function TGdbRspThread.gdb_fieldSepPos(cmd: string): integer;
@@ -393,7 +393,7 @@ end;
 
 procedure TGdbRspThread.DebugGetMemory(cmd: string);
 var
-  len, i: integer;
+  len, i, err: integer;
   s: string;
   addr: dword;
   data: TBytes;
@@ -403,14 +403,19 @@ begin
   s := '$' + copy(cmd, 1, len-1);
   delete(cmd, 1, len);
 
-  addr := StrToInt(s);
+  //addr := StrToInt(s);
+  val(s, addr, err);
+  if err <> 0 then
+    addr := $FFFFFFFF; // invalid address, should be caught below
+
   len := gdb_fieldSepPos(cmd);
   delete(cmd, len, length(cmd) - len);
   len := StrToInt('$' + cmd);
 
-  if (addr + len) < $800000 then // flash memory
+  s := '';
+  if dword(addr + len) < $800000 then // flash memory
   begin
-    if (addr + len) < FDebugWire.Device.flashSize then
+    if dword(addr + len) < FDebugWire.Device.flashSize then
       FDebugWire.ReadFlash(addr, len, data)
     else
     begin
@@ -419,7 +424,7 @@ begin
       FillByte(data[0], length(data), 0);
     end;
   end
-  else if (addr + len) < $810000 then // SRAM
+  else if dword(addr + len) < $810000 then // SRAM
   begin
     addr := addr and $FFFF;
     if addr < 32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize then
@@ -431,15 +436,20 @@ begin
       FillByte(data[0], length(data), 0);
     end;
   end
-  else // must be EEPROM then
+  else
   begin
-    FLog('Error: EEPROM access not supported yet.');
+    if dword(addr + len) < ($810000 + FDebugWire.Device.eepromSize) then // must be EEPROM then
+      FLog('Error: EEPROM access not supported yet.')
+    else
+      FLog('Error: Address beyond EEPROM.');
+
     SetLength(data, 0);
+    s := 'E00';
   end;
 
-  s := '';
-  for i := 0 to high(data) do
-    s := s + hexStr(data[i], 2);
+  if s = '' then
+    for i := 0 to high(data) do
+      s := s + hexStr(data[i], 2);
 
   gdb_response(s);
 end;
