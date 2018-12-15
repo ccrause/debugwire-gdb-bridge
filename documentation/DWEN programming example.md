@@ -1,5 +1,5 @@
 # Activating DWEN
-Start by inspeting current fuse settings:  
+Start by inspecting current fuse settings:  
 ```bash
 ~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM0 -c avrisp2 -p t24  
 avrdude: AVR device initialized and ready to accept instructions  
