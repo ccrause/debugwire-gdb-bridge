@@ -403,7 +403,6 @@ begin
   s := '$' + copy(cmd, 1, len-1);
   delete(cmd, 1, len);
 
-  //addr := StrToInt(s);
   val(s, addr, err);
   if err <> 0 then
     addr := $FFFFFFFF; // invalid address, should be caught below
