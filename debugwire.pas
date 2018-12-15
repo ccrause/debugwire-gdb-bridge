@@ -31,7 +31,7 @@ type
     flashSize,  // In bytes
     FlashPageSize,
     DWDR,       // DebugWIRE data register, aka MONDR - Monitor data register
-    bootStart,  // Lowest PC value giving boot section access
+    bootStart,  // Lowest PC value giving boot section access - used to set PC when executing SPM instruction to get write access to flash
     bootflags,  // Where to find the boot sector control flags, if any
     EECR,       // EEPROM control register index. EEDR and EEARL always follow directly.
     EEARH: integer;      // EEPROM address high (doesn't exist on all devices)
@@ -57,6 +57,8 @@ type
     FOutBuffer: array[0..255] of byte;
     FOutBufCount: integer;
 
+    procedure FLogFile(data: TBytes; count: integer); overload;
+    procedure FLogFile(s: string);  overload;
     procedure FLog(s: string);
 
     function FBaudScale(data: byte): integer;
@@ -167,6 +169,7 @@ const
   FRegCacheLength = 4;   // Cache up to R31
 
   SPMCSR = $37;        // used for in/out instruction, so don't add $20 offset
+  DWDR = $31;          // debug-wire register, used to push data in/out
 
   DeviceInfo: array[0..16] of TDeviceInfo =
     ((name: 'ATtiny13';   ID: $9007; ioregSize:  64; sramSize:  64; eepromSize:  64; EepromPageSize: 4; flashSize: 1024; FlashPageSize: 32; DWDR: $2E; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $00),
@@ -180,13 +183,13 @@ const
      (name: 'ATmega48A';  ID: $9205; ioregSize: 224; sramSize: 512; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $31; bootStart: $0000; bootflags: 0; EECR: $1F; EEARH: $22),
      (name: 'ATmega48PA'; ID: $920A; ioregSize: 224; sramSize: 512; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $31; bootStart: $0000; bootflags: 0; EECR: $1F; EEARH: $22),
 
-     (name: 'ATmega88A';  ID: $930A; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F80; bootflags: 1; EECR: $1F; EEARH: $22),
-     (name: 'ATmega88PA'; ID: $930F; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F80; bootflags: 1; EECR: $1F; EEARH: $22),
+     (name: 'ATmega88A';  ID: $930A; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F00; bootflags: 1; EECR: $1F; EEARH: $22),
+     (name: 'ATmega88PA'; ID: $930F; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F00; bootflags: 1; EECR: $1F; EEARH: $22),
 
-     (name: 'ATmega168A'; ID: $9406; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 16384;FlashPageSize: 128;DWDR: $31; bootStart: $1F80; bootflags: 1; EECR: $1F; EEARH: $22),
-     (name: 'ATmega168PA';ID: $940B; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 16384;FlashPageSize: 128;DWDR: $31; bootStart: $1F80; bootflags: 1; EECR: $1F; EEARH: $22),
-     (name: 'ATmega328P'; ID: $950F; ioregSize: 224; sramSize: 2048; eepromSize: 1024;EepromPageSize: 4; flashSize: 32768;FlashPageSize: 128;DWDR: $31; bootStart: $3F80; bootflags: 2; EECR: $1F; EEARH: $22),
-     (name: 'ATmega328';  ID: $9514; ioregSize: 224; sramSize: 2048; eepromSize: 1024;EepromPageSize: 4; flashSize: 32768;FlashPageSize: 128;DWDR: $31; bootStart: $3F80; bootflags: 2; EECR: $1F; EEARH: $22),
+     (name: 'ATmega168A'; ID: $9406; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 16384;FlashPageSize: 128;DWDR: $31; bootStart: $1F00; bootflags: 1; EECR: $1F; EEARH: $22),
+     (name: 'ATmega168PA';ID: $940B; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 16384;FlashPageSize: 128;DWDR: $31; bootStart: $1F00; bootflags: 1; EECR: $1F; EEARH: $22),
+     (name: 'ATmega328P'; ID: $950F; ioregSize: 224; sramSize: 2048; eepromSize: 1024;EepromPageSize: 4; flashSize: 32768;FlashPageSize: 128;DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEARH: $22),
+     (name: 'ATmega328';  ID: $9514; ioregSize: 224; sramSize: 2048; eepromSize: 1024;EepromPageSize: 4; flashSize: 32768;FlashPageSize: 128;DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEARH: $22),
 
      (name: 'ATtiny441';  ID: $9215; ioregSize: 224; sramSize: 256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 16; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F));
 
@@ -250,6 +253,40 @@ end;
 
 
 { TDebugWire }
+
+procedure TDebugWire.FLogFile(data: TBytes; count: integer);
+const
+  fname = 'debug.txt';
+var
+  f: TextFile;
+  i: integer;
+begin
+  AssignFile(f, fname);
+  if FileExists(fname) then
+    Append(f)
+  else
+    Rewrite(f);
+
+  for i := 0 to count-1 do
+    Write(f, HexStr(data[i], 2), ' ');
+  WriteLn(f);
+  Flush(f);
+  CloseFile(f);
+end;
+
+procedure TDebugWire.FLogFile(s: string);
+var
+  f: TextFile;
+begin
+  AssignFile(f, 'debug.txt');
+  Append(f);
+  if IOResult <> 0 then
+    Rewrite(f);
+
+  WriteLn(f, s);
+  Flush(f);
+  CloseFile(f);
+end;
 
 procedure TDebugWire.FLog(s: string);
 begin
@@ -563,7 +600,7 @@ var
 begin
   SetLength(cmd, 3);
   cmd[0] := CMD_SET_BP;
-  cmd[1] := hi(addr) ;//or FAddrFlag;
+  cmd[1] := hi(addr) or FAddrFlag;
   cmd[2] := lo(addr);
   SendData(cmd);
 end;
@@ -647,16 +684,22 @@ procedure TDebugWire.ReadRegs(const start, count: byte; out values: TBytes);
 var
   cmds: TBytes;
 begin
-  SetPC(start);
-  SetBreakPoint(start + count);
+  if count = 1 then // shorter to just execute an OUT instruction to push the register over debugwire
+  begin
+    OutInstruction(DWDR, start);
+  end
+  else
+  begin
+    SetPC(start);
+    SetBreakPoint(start + count);
 
-  SetLength(cmds, 4);
-  cmds[0] := CMD_RW_SETUP;
-  cmds[1] := CMD_RW_MODE;
-  cmds[2] := RW_MODE_READ_REGS;
-  cmds[3] := CMD_GO_RW;
-  SendData(cmds);
-
+    SetLength(cmds, 4);
+    cmds[0] := CMD_RW_SETUP;
+    cmds[1] := CMD_RW_MODE;
+    cmds[2] := RW_MODE_READ_REGS;
+    cmds[3] := CMD_GO_RW;
+    SendData(cmds);
+  end;
   ReadData(count, values);
 end;
 
@@ -892,7 +935,6 @@ begin
     WriteRegs(29, data); // r29 := RWWSRE
     OutInstruction(SPMCSR, 29);  // out SPMCSR,r29
     SendInstruction16(OpCode_SPM);       // spm
-    //FPushSerialBuffer;
   end;
 end;
 
@@ -933,7 +975,7 @@ var
 begin
   SetLength(data, 3);
   data[0] := PGWRT or SPMEN;            // Page write
-  data[1] := lo(address);
+  data[1] := lo(address);               // Put address in Z
   data[2] := hi(address);
   WriteRegs(29, data);
   SetPC(FDevice.bootStart);             // move PC into boot section to enable execution of SPM instruction
@@ -970,7 +1012,6 @@ var
   val: TBytes;
 begin
   SetLength(val, 1);
-  SendData(Byte(CMD_SS_SETUP));        // Set up for single step mode
   InInstruction(30, SPMCSR);
   ReadRegs(30, 1, val);
   Result := val[0];
@@ -1045,6 +1086,7 @@ begin
   end;
 end;
 
+// Byte address based
 procedure TDebugWire.ReadFlash(const start, count: word; out values: TBytes);
 var
   cmd, temp: TBytes;
@@ -1064,11 +1106,9 @@ begin
   while (addr < addrEnd) do
   begin
     len := min(addrEnd - addr, 128);
-
     SetZreg(addr);
-    SetPC(FDevice.bootStart);    // to execute LPM?
-    SetBreakPoint(FDevice.bootStart + 2*len);
-
+    SetPC(start);
+    SetBreakPoint(start + 2*len);
     SendData(cmd);
 
     ReadData(len, temp);
@@ -1080,7 +1120,6 @@ end;
 procedure TDebugWire.SendInstruction16(const instr: word);
 var
   data: TBytes;
-  //data: array[0..4] of byte;
 begin
   SetLength(data, 5);
   data[0] := CMD_SS_SETUP;       // Single step
@@ -1158,9 +1197,7 @@ begin
       Sleep(10);
   end;
 
-  if data = 85 then
-    //FLog('Received $55')
-  else
+  if data <> 85 then
     FLog('Unexpected reply: ' + IntToStr(data));
 end;
 
@@ -1175,8 +1212,6 @@ begin
   if (res > 0) then
     if (data = 0) then
     begin
-      //FLog('Received break');
-
       res := FSer.ReadTimeout(data, 1, 100);
 
       // Seem to get bogus $FF value before $55
@@ -1184,10 +1219,7 @@ begin
         res := FSer.ReadTimeout(data, 1, 100);
 
       if data = $55 then
-      begin
-        //FLog('Received $55');
-        Result := true;
-      end
+        Result := true
       else
       begin
         FLog('Expected $55 after BREAK, but got: $'+ hexStr(data, 2));

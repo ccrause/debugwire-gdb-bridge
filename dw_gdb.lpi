@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="10"/>
+    <Version Value="11"/>
     <PathDelim Value="\"/>
     <General>
       <SessionStorage Value="InProjectDir"/>
@@ -18,9 +18,16 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <FormatVersion Value="1"/>
-        <CommandLineParams Value="-s \dev\ttyUSB0 -b 62500 --ispenable"/>
+        <CommandLineParams Value="-s \dev\ttyUSB0 -b 61000"/>
       </local>
+      <FormatVersion Value="2"/>
+      <Modes Count="1">
+        <Mode0 Name="default">
+          <local>
+            <CommandLineParams Value="-s \dev\ttyUSB0 -b 61000"/>
+          </local>
+        </Mode0>
+      </Modes>
     </RunParams>
     <RequiredPackages Count="1">
       <Item1>
@@ -48,9 +55,18 @@
       <IncludeFiles Value="$(ProjOutDir)"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
+    <CodeGeneration>
+      <Checks>
+        <IOChecks Value="True"/>
+        <RangeChecks Value="True"/>
+        <OverflowChecks Value="True"/>
+        <StackChecks Value="True"/>
+      </Checks>
+      <VerifyObjMethodCallValidity Value="True"/>
+    </CodeGeneration>
   </CompilerOptions>
   <Debugging>
-    <Exceptions Count="3">
+    <Exceptions Count="5">
       <Item1>
         <Name Value="EAbort"/>
       </Item1>
@@ -60,6 +76,12 @@
       <Item3>
         <Name Value="EFOpenError"/>
       </Item3>
+      <Item4>
+        <Name Value="ESocketError"/>
+      </Item4>
+      <Item5>
+        <Name Value="RunError(216)"/>
+      </Item5>
     </Exceptions>
   </Debugging>
 </CONFIG>
