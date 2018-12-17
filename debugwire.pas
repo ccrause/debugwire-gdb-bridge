@@ -17,6 +17,8 @@ unit debugwire;
 
 interface
 
+{$define debug}
+
 uses
   serialutils, SysUtils;
 
@@ -865,7 +867,9 @@ var
   doWrite, doErase: boolean;
 begin
   // In case of ATMega?
+  {$ifdef debug} FPushSerialBuffer; {$endif}
   FReEnabelRWW;
+  {$ifdef debug} FPushSerialBuffer; {$endif}
 
   ReadFlash(startAddress, FDevice.FlashPageSize, oldPage);
 
@@ -882,19 +886,25 @@ begin
   if doErase then
   begin
     FLog('Erasing flash page starting at: $' + hexStr(startAddress, 4));
+    {$ifdef debug} FPushSerialBuffer; {$endif}
     FEraseFlashPage(startAddress);
+    {$ifdef debug} FPushSerialBuffer; {$endif}
   end;
 
   if doWrite then
   begin
     FLog('Loading flash page buffer.');
+    {$ifdef debug} FPushSerialBuffer; {$endif}
     FLoadPageBuffer(startAddress, page);
+    {$ifdef debug} FPushSerialBuffer; {$endif}
 
     FLog('Write flash page buffer');
     FWritePageBuffer(startAddress, page);
+    {$ifdef debug} FPushSerialBuffer; {$endif}
   end;
 
   FReEnabelRWW;
+  {$ifdef debug} FPushSerialBuffer; {$endif}
 end;
 
 procedure TDebugWire.FEraseFlashPage(startAddress: word);
@@ -929,11 +939,15 @@ begin
   if (FDevice.bootStart > 0) then
   begin
     // TODO: Consider need to first check if RWWSRE or SELFPRGEN is set?
-    SetPC(FDevice.bootStart);  // Set PC to boot loader section to execute SPM instruction
     SetLength(data, 1);
-    data[0] := RWWSRE and SPMEN;
+    data[0] := RWWSRE or SPMEN;
     WriteRegs(29, data); // r29 := RWWSRE
+    {$ifdef debug} FPushSerialBuffer; {$endif}
+
     OutInstruction(SPMCSR, 29);  // out SPMCSR,r29
+    {$ifdef debug} FPushSerialBuffer; {$endif}
+    SetPC(FDevice.bootStart);  // Set PC to boot loader section to execute SPM instruction
+    {$ifdef debug} FPushSerialBuffer; {$endif}
     SendInstruction16(OpCode_SPM);       // spm
   end;
 end;
@@ -955,7 +969,6 @@ begin
   SendData(Byte(CMD_SS_SETUP));  // Set up for single step mode
   i := 0;
   SetLength(data, 2);
-  SetPC(FDevice.bootStart);      // Set PC that allows access to all of flash
   while (i < FDevice.FlashPageSize) do
   begin
     data[0] := values[i];          // R0
@@ -963,6 +976,7 @@ begin
     i := i + 2;
     WriteRegs(0, data);            // r0 := low byte, r1 := high byte
     OutInstruction(SPMCSR, 29);    // out SPMCSR,r29 (SPMEN)
+    SetPC(FDevice.bootStart);      // Set PC that allows access to all of flash
     SendInstruction16(OpCode_SPM); // spm
     SendInstruction16($9632);      // adiw Z,2  TODO: Really needed, Z is auto inceremented by SPM?
   end;
