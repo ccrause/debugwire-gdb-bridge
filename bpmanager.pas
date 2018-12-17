@@ -228,7 +228,7 @@ begin
     HWBP.active := false
   else
   begin
-    // first locate oppropriat page
+    // first locate appropriate page
     PageAddr := address and FPageMask;
     i := 0;
     while (i < length(FlashPagesWithBPs)) and (FlashPagesWithBPs[i].PageAddress < PageAddr) do
@@ -301,22 +301,22 @@ begin
     hwbInUse := false;
   end;
 
-  // Update active active and delete inactive BP
+  // Update active and delete inactive BP
   i := 0;
-  while (i < length(FlashPagesWithBPs)) do
+  while (i < length(FlashPagesWithBPs)) do  // iterate over flash pages
   begin
     j := 0;
     MustLoadPage := true;   // set to false after first read
     MustSavePage := false;
-    while (j < length(FlashPagesWithBPs[i].BreakPoints)) do
+    while (j < length(FlashPagesWithBPs[i].BreakPoints)) do  // iterate over BPs in current flash page
     begin
       current := @FlashPagesWithBPs[i].BreakPoints[j];
 
-      // Check active but SW break not written
-      // Move to hw if open and deactivate, else write to flash
+      // Check if active but SW break not written yet
+      // Move to hw if not in use, else write to flash
       if current^.active and not(current^.written) then
       begin
-        if not hwbInUse then // No penalty because it wasn't written to flash yet
+        if not hwbInUse then // No penalty to move BP to HW because it wasn't written to flash yet
         begin
           HWBP.address := current^.address;
           HWBP.active := true;
