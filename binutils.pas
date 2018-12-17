@@ -6,12 +6,12 @@ uses
   SysUtils, Classes;
 
 type
-  BinRecType = (brData, brEOF, brExtSegAddr, brStartSegAddr, brExtLinearAddr, brStartLinearAddr);
+  TBinRecType = (brData=0, brEOF, brExtSegAddr, brStartSegAddr, brExtLinearAddr, brStartLinearAddr);
 
   TBinRecord = record
-    count: byte;   // number of bytes in this record
+    count: word;   // number of bytes in this record
     address: word; // address of first byte
-    recordType: byte;
+    recordType: TBinRecType;
     data: TBytes;
   end;
 
@@ -74,10 +74,10 @@ begin
 
       // Record type
       s := '$' + copy(line, 8, 2);
-      Result[i].recordType := StrToInt(s);
+      Result[i].recordType := TBinRecType(StrToInt(s));
       {$PUSH}
       {$R-}
-      checksum := checksum + Result[i].recordType;
+      checksum := checksum + ord(Result[i].recordType);
       {$POP}
 
       // Data
@@ -119,6 +119,7 @@ begin
       Result[i].data := ConCatArray(Result[i].data, Result[j].data);
       Result[i].count := Result[i].count + Result[j].count;
 
+      // Naive compaction, could probably just let 2nd index increment and truncate at end
       for k := j to length(Result)-2 do
       begin
         Result[k] := Result[k+1];
