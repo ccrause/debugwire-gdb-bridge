@@ -45,7 +45,6 @@ type
 
   TDebugWire = class
   private
-    //FBaud: integer;
     FSer: TSerialObj;
     FAddrFlag: byte;
     FTimersDisabled: boolean;
@@ -53,7 +52,6 @@ type
     FDevice: TDeviceInfo;
     FPC: word;
     FBP: integer;  // Single hardware breakpoint
-    //FFlashPageBuffer: TBytes;
     FCachedRegs: TBytes; // Cache of R28:R31 which gets changed in some debugwire transactions.
     FLogger: TLog;
 
@@ -80,7 +78,7 @@ type
     procedure FWriteFlashPage(startAddress: word; const page: TBytes);
     procedure FEraseFlashPage(startAddress: word);
 
-    procedure FReEnabelRWW;  // require follow-up FPushSerialBuffer
+    procedure FReEnableRWW;  // require follow-up FPushSerialBuffer
     procedure FLoadPageBuffer(address: word; values: TBytes);
     procedure FWritePageBuffer(address: word; values: TBytes);
 
@@ -106,9 +104,7 @@ type
     function IdentifyTarget: Boolean;
 
     procedure SetPC(addr: word);   // require follow-up FPushSerialBuffer
-
     procedure SetZreg(const val: word); // require follow-up FPushSerialBuffer
-
     // Use with caution, may change R29...R31
     procedure ReadRegs(const start, count: byte; out values: TBytes);
     procedure WriteRegs(const start: byte; const values: TBytes);  // require follow-up FPushSerialBuffer
@@ -183,7 +179,6 @@ const
      (name: 'ATtiny25';   ID: $9108; ioregSize:  64; sramSize: 128; eepromSize: 128; EepromPageSize: 4; flashSize: 2048; FlashPageSize: 32; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
      (name: 'ATtiny45';   ID: $9206; ioregSize:  64; sramSize: 256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
      (name: 'ATtiny85';   ID: $930B; ioregSize:  64; sramSize: 512; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
-
      (name: 'ATmega48A';  ID: $9205; ioregSize: 224; sramSize: 512; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $31; bootStart: $0000; bootflags: 0; EECR: $1F; EEARH: $22; NRRW: 0),
      (name: 'ATmega48PA'; ID: $920A; ioregSize: 224; sramSize: 512; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $31; bootStart: $0000; bootflags: 0; EECR: $1F; EEARH: $22; NRRW: 0),
 
@@ -199,7 +194,7 @@ const
      (name: 'ATmega16U2'; ID: $9489; ioregSize: 224; sramSize: 512; eepromSize: 512;  EepromPageSize: 4; flashSize: 16384;FlashPageSize: 128;DWDR: $31; bootStart: $1F00; bootflags: 2; EECR: $1F; EEARH: $22; NRRW: $1800),
      (name: 'ATmega32U2'; ID: $958A; ioregSize: 224; sramSize: 1024;eepromSize: 1024; EepromPageSize: 4; flashSize: 32768;FlashPageSize: 128;DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEARH: $22; NRRW: $3800),
 
-     (name: 'ATtiny441';  ID: $9215; ioregSize: 224; sramSize: 256; eepromSize: 256;  EepromPageSize: 4; flashSize: 4096; FlashPageSize: 16; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0));
+     (name: 'ATtiny441';  ID: $9215; ioregSize: 224; sramSize: 256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 16; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0));
 
   // used as pointer for r/w operations
   REG_Z = 30;
@@ -283,12 +278,15 @@ begin
 end;
 
 procedure TDebugWire.FLogFile(s: string);
+const
+  fname = 'debug.txt';
 var
   f: TextFile;
 begin
-  AssignFile(f, 'debug.txt');
-  Append(f);
-  if IOResult <> 0 then
+  AssignFile(f, fname);
+  if FileExists(fname) then
+    Append(f)
+  else
     Rewrite(f);
 
   WriteLn(f, s);
@@ -386,7 +384,11 @@ end;
 function TDebugWire.Connect(portName: string; baud: integer): boolean;
 begin
   if baud > 0 then
-    result := FSer.OpenPort(portName, baud)
+  begin
+    result := FSer.OpenPort(portName, baud);
+    if result then
+      result := BreakResponse = $55;
+  end
   else
     result := Connect(portName);
 end;
@@ -543,12 +545,13 @@ begin
   SetLength(values, count);
   FPushSerialBuffer; // empty last bit of buffered data
 
-  len := FSer.ReadTimeout(values[0], count, 10*count);
+  len := FSer.ReadTimeout(values[0], count, 100 + 10*count);
   if len < count then
   begin
-    FLog('ReadData: len < count.  OS error: ' + IntToStr(GetLastOSError) {+ ' - ' + StrError(GetLastOSError)});
-    l2 := FSer.ReadTimeout(values[len], count - len, 10*(count - len));
-    len := len + l2
+    FLog('ReadData: len < count.  OS error: ' + IntToStr(GetLastOSError) + ' - '
+    {$ifndef windows}+ StrError(GetLastOSError){$endif});
+    l2 := FSer.ReadTimeout(values[len], count - len, 100 + 10*(count - len));
+    len := len + l2;
   end;
 
   SetLength(values, len);
@@ -642,6 +645,7 @@ var
 begin
   if FOutBufCount > 0 then
   begin
+    {$ifdef debug} FLogFile(FOutBuffer, FOutBufCount);{$endif}
     SetLength(echo, FOutBufCount);
     FSer.Write(FOutBuffer[0], FOutBufCount);
     FSer.Flush;
@@ -714,18 +718,30 @@ end;
 procedure TDebugWire.WriteRegs(const start: byte; const values: TBytes);
 var
   cmds: tbytes;
+  i: integer;
 begin
-  SetPC(start);
-  SetBreakPoint(start + length(values));
+  if length(values) <= 3 then // shorter to just execute an OUT instruction to push the register over debugwire
+  begin
+    for i := 0 to length(values)-1 do
+    begin
+      InInstruction(start+i, DWDR);
+      SendData(values[i]);
+    end;
+  end
+  else
+  begin
+    SetPC(start);
+    SetBreakPoint(start + length(values));
 
-  SetLength(cmds, 4);
-  cmds[0] := CMD_RW_SETUP;
-  cmds[1] := CMD_RW_MODE;
-  cmds[2] := RW_MODE_WRITE_REGS;
-  cmds[3] := CMD_GO_RW;
-  SendData(cmds);
+    SetLength(cmds, 4);
+    cmds[0] := CMD_RW_SETUP;
+    cmds[1] := CMD_RW_MODE;
+    cmds[2] := RW_MODE_WRITE_REGS;
+    cmds[3] := CMD_GO_RW;
+    SendData(cmds);
 
-  SendData(values);
+    SendData(values);
+  end;
 end;
 
 procedure TDebugWire.ReadAddress(const start, count: word; out values: TBytes);
@@ -873,9 +889,7 @@ var
   doWrite, doErase: boolean;
 begin
   // In case of ATMega?
-  {$ifdef debug} FPushSerialBuffer; {$endif}
-  FReEnabelRWW;
-  {$ifdef debug} FPushSerialBuffer; {$endif}
+  FReEnableRWW;
 
   ReadFlash(startAddress, FDevice.FlashPageSize, oldPage);
 
@@ -892,25 +906,19 @@ begin
   if doErase then
   begin
     FLog('Erasing flash page starting at: $' + hexStr(startAddress, 4));
-    {$ifdef debug} FPushSerialBuffer; {$endif}
     FEraseFlashPage(startAddress);
-    {$ifdef debug} FPushSerialBuffer; {$endif}
   end;
 
   if doWrite then
   begin
     FLog('Loading flash page buffer.');
-    {$ifdef debug} FPushSerialBuffer; {$endif}
     FLoadPageBuffer(startAddress, page);
-    {$ifdef debug} FPushSerialBuffer; {$endif}
 
     FLog('Write flash page buffer');
     FWritePageBuffer(startAddress, page);
-    {$ifdef debug} FPushSerialBuffer; {$endif}
   end;
 
-  //FReEnabelRWW;
-  {$ifdef debug} FPushSerialBuffer; {$endif}
+  FReEnableRWW;
 end;
 
 procedure TDebugWire.FEraseFlashPage(startAddress: word);
@@ -938,32 +946,30 @@ begin
   Sync;
 end;
 
-procedure TDebugWire.FReEnabelRWW;
+procedure TDebugWire.FReEnableRWW;
 var
    data: TBytes;
 begin
+  {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%}); {$endif}
   if (FDevice.bootStart > 0) then
   begin
     // TODO: Consider need to first check if RWWSRE or SELFPRGEN is set?
+    SetPC(FDevice.bootStart);  // Set PC to boot loader section to execute SPM instruction
     SetLength(data, 1);
     data[0] := RWWSRE or SPMEN;
     WriteRegs(29, data); // r29 := RWWSRE
-    {$ifdef debug} FPushSerialBuffer; {$endif}
-
     OutInstruction(SPMCSR, 29);  // out SPMCSR,r29
-    {$ifdef debug} FPushSerialBuffer; {$endif}
-    SetPC(FDevice.bootStart);  // Set PC to boot loader section to execute SPM instruction
-    {$ifdef debug} FPushSerialBuffer; {$endif}
     SendInstruction16(OpCode_SPM);       // spm
   end;
+  {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
 end;
 
 procedure TDebugWire.FLoadPageBuffer(address: word; values: TBytes);
 var
   data: TBytes;
   i: byte;
-  //tv: TTimeVal;
 begin
+  {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%}); {$endif}
   SetLength(data, 3);
 
   // Write %0000001 to SPMCSR, data word address in Z
@@ -972,7 +978,6 @@ begin
   data[2] := hi(address);        // To write to temp page the page address (PCPAGE) is masked out, so effectively only the data address from 0 to pagesize is used
   WriteRegs(29, data);           // r29 := SPEN, Z = word address of first data word
 
-  SendData(Byte(CMD_SS_SETUP));  // Set up for single step mode
   i := 0;
   SetLength(data, 2);
   while (i < FDevice.FlashPageSize) do
@@ -981,18 +986,20 @@ begin
     data[1] := values[i+1];        // R1
     i := i + 2;
     WriteRegs(0, data);            // r0 := low byte, r1 := high byte
-    OutInstruction(SPMCSR, 29);    // out SPMCSR,r29 (SPMEN)
     SetPC(FDevice.bootStart);      // Set PC that allows access to all of flash
+    OutInstruction(SPMCSR, 29);    // out SPMCSR,r29 (SPMEN)
     SendInstruction16(OpCode_SPM); // spm
     SendInstruction16($9632);      // adiw Z,2  TODO: Really needed, Z is auto inceremented by SPM?
   end;
   FPushSerialBuffer;
+  {$ifdef debug} FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
 end;
 
 procedure TDebugWire.FWritePageBuffer(address: word; values: TBytes);
 var
   data: TBytes;
 begin
+  {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%}); {$endif}
   SetLength(data, 3);
   data[0] := PGWRT or SPMEN;            // Page write
   data[1] := lo(address);               // Put address in Z
@@ -1001,10 +1008,11 @@ begin
   SetPC(FDevice.bootStart);             // move PC into boot section to enable execution of SPM instruction
   OutInstruction(SPMCSR, 29);
 
-  if (FDevice.bootStart > 0) then       // mega device?
+  if (FDevice.bootStart > 0) and (address < FDevice.NRRW) then       // mega device?
   begin
     SendInstruction16(OpCode_SPM);      // Do spm
     FPushSerialBuffer;
+    Sleep(1);
     FLog('Waiting for SPM to complete');
     while ((FReadSPMCSR and SPMEN) = SPMEN) do   // block until SPMEN clears
     begin
@@ -1025,16 +1033,19 @@ begin
     // Wait for break signal
     Sync;
   end;
+  {$ifdef debug} FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
 end;
 
 function TDebugWire.FReadSPMCSR: byte;
 var
   val: TBytes;
 begin
+  {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%}); {$endif}
   SetLength(val, 1);
   InInstruction(30, SPMCSR);
   ReadRegs(30, 1, val);
   Result := val[0];
+  {$ifdef debug} FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
 end;
 
 procedure TDebugWire.WriteFlash(start: word; const values: TBytes);
@@ -1051,6 +1062,7 @@ begin
   end
   else if (length(values) > 0) then
   begin
+    {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%}); {$endif}
     pageMask := FDevice.flashSize - FDevice.FlashPageSize;
     SetLength(page, FDevice.FlashPageSize);
     remainingLength := length(values);
@@ -1103,6 +1115,7 @@ begin
     // Restore R0-R1
     WriteRegs(0, R0R1);
     FPushSerialBuffer;
+    {$ifdef debug} FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
   end;
 end;
 
@@ -1116,26 +1129,28 @@ begin
   addrEnd := start + count;
   addr := start;
 
-  FReEnabelRWW;
+  {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%}); {$endif}
+
   SetLength(cmd, 4);
   cmd[0] := CMD_RW_SETUP;
   cmd[1] := CMD_RW_MODE;
   cmd[2] := RW_MODE_READ_FLASH;
   cmd[3] := CMD_GO_RW;
 
-  // Read 128 byte chunks
+  // Read 64 byte chunks
   while (addr < addrEnd) do
   begin
-    len := min(addrEnd - addr, 128);
+    len := min(addrEnd - addr, 64);
     SetZreg(addr);
-    SetPC(start);
-    SetBreakPoint(start + 2*len);
+    SetPC(Device.bootStart);
+    SetBreakPoint(Device.bootStart + 2*len);
     SendData(cmd);
 
     ReadData(len, temp);
     values := ConCatArray(values, temp);
     addr := addr + len;
   end;
+  {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
 end;
 
 procedure TDebugWire.SendInstruction16(const instr: word);
@@ -1332,4 +1347,3 @@ begin
 end;
 
 end.
-
