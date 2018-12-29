@@ -30,7 +30,6 @@ type
     FBPManager: TBPManager;
     FLastCmd: string;  // in case a resend is required;
 
-    FFlashWriteBuffer: array of TFlashWriteBuffer;
     procedure FLog(s: string);
 
     function gdb_fieldSepPos(cmd: string): integer;
