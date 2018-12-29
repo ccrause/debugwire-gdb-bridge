@@ -75,7 +75,7 @@ type
     // First, erase if a 0 -> 1 bit transition is required
     // then perform write
     // Requires startAddress to fall on page boundary
-    procedure FWriteFlashPage(startAddress: word; const page: TBytes);
+    procedure FWriteFlashPage(startAddress: word; const newPage, oldPage: TBytes);
     procedure FEraseFlashPage(startAddress: word);
 
     procedure FReEnableRWW;  // require follow-up FPushSerialBuffer
@@ -386,8 +386,8 @@ begin
   if baud > 0 then
   begin
     result := FSer.OpenPort(portName, baud);
-    if result then
-      result := BreakResponse = $55;
+    //if result then
+    //  result := BreakResponse = $55;
   end
   else
     result := Connect(portName);
@@ -696,11 +696,11 @@ procedure TDebugWire.ReadRegs(const start, count: byte; out values: TBytes);
 var
   cmds: TBytes;
 begin
-  if count = 1 then // shorter to just execute an OUT instruction to push the register over debugwire
-  begin
-    OutInstruction(DWDR, start);
-  end
-  else
+  //if count = 1 then // shorter to just execute an OUT instruction to push the register over debugwire
+  //begin
+  //  OutInstruction(DWDR, start);
+  //end
+  //else
   begin
     SetPC(start);
     SetBreakPoint(start + count);
@@ -718,17 +718,14 @@ end;
 procedure TDebugWire.WriteRegs(const start: byte; const values: TBytes);
 var
   cmds: tbytes;
-  i: integer;
+  //i: integer;
 begin
-  if length(values) <= 3 then // shorter to just execute an OUT instruction to push the register over debugwire
-  begin
-    for i := 0 to length(values)-1 do
-    begin
-      InInstruction(start+i, DWDR);
-      SendData(values[i]);
-    end;
-  end
-  else
+  //if length(values) = 1 then // shorter to just execute an OUT instruction to push the register over debugwire
+  //begin
+  //  InInstruction(start, DWDR);
+  //  SendData(values[0]);
+  //end
+  //else
   begin
     SetPC(start);
     SetBreakPoint(start + length(values));
@@ -882,24 +879,24 @@ begin
   ReadData(count, values);
 end;
 
-procedure TDebugWire.FWriteFlashPage(startAddress: word; const page: TBytes);
+procedure TDebugWire.FWriteFlashPage(startAddress: word; const newPage, oldPage: TBytes);
 var
-  oldPage: TBytes;
+  //oldPage: TBytes;
   i: integer;
   doWrite, doErase: boolean;
 begin
   // In case of ATMega?
-  FReEnableRWW;
+  //FReEnableRWW;
 
-  ReadFlash(startAddress, FDevice.FlashPageSize, oldPage);
+  //ReadFlash(startAddress, FDevice.FlashPageSize, oldPage);
 
   doWrite := false;
   doErase := false;
   i := 0;
   while (i < length(oldPage)) and not(doErase) do
   begin
-    doWrite := doWrite or (oldPage[i] <> page[i]);  // Flag any difference
-    doErase := (not(oldPage[i]) and page[i]) > 0;   // Flag any 0 -> 1 transition
+    doWrite := doWrite or (oldPage[i] <> newPage[i]);  // Flag any difference
+    doErase := (not(oldPage[i]) and newPage[i]) > 0;   // Flag any 0 -> 1 transition
     inc(i);
   end;
 
@@ -912,10 +909,10 @@ begin
   if doWrite then
   begin
     FLog('Loading flash page buffer.');
-    FLoadPageBuffer(startAddress, page);
+    FLoadPageBuffer(startAddress, newPage);
 
     FLog('Write flash page buffer');
-    FWritePageBuffer(startAddress, page);
+    FWritePageBuffer(startAddress, newPage);
   end;
 
   FReEnableRWW;
@@ -1051,7 +1048,7 @@ end;
 procedure TDebugWire.WriteFlash(start: word; const values: TBytes);
 var
   R0R1: TBytes;
-  page: TBytes;
+  page, oldPage: TBytes;
   partLength, pageMask, PageStart, remainingLength, currentIndex: word;
   len, i: byte;
 begin
@@ -1076,12 +1073,13 @@ begin
     PageStart := start and pageMask;
     if (start > PageStart) then
     begin
-      ReadFlash(PageStart, FDevice.FlashPageSize, page);
+      ReadFlash(PageStart, FDevice.FlashPageSize, oldPage);
+      page := copy(oldPage);
       len := min(FDevice.FlashPageSize, length(values));
       for i := 0 to len-1 do
         page[start - PageStart + i] := values[i];
 
-      FWriteFlashPage(PageStart, page);
+      FWriteFlashPage(PageStart, page, oldPage);
       partLength := FDevice.FlashPageSize - ((FDevice.FlashPageSize - 1) and start);
       start := start + partLength;
       currentIndex := currentIndex + partLength;
@@ -1094,8 +1092,9 @@ begin
     // Whole pages
     while remainingLength > FDevice.FlashPageSize do
     begin
+      ReadFlash(PageStart, FDevice.FlashPageSize, oldPage);
       page := copy(values, currentIndex, FDevice.FlashPageSize);
-      FWriteFlashPage(start, page);
+      FWriteFlashPage(start, page, oldPage);
       start := start + FDevice.FlashPageSize;
       currentIndex := currentIndex + FDevice.FlashPageSize;
       remainingLength := remainingLength - FDevice.FlashPageSize;
@@ -1103,13 +1102,14 @@ begin
 
     if remainingLength > 0 then
     begin
-      ReadFlash(start, FDevice.FlashPageSize, page);
+      ReadFlash(start, FDevice.FlashPageSize, oldPage);
+      page := copy(oldPage);
 
       // Copy new data on top of existing data
       for i := 0 to remainingLength-1 do
         page[i] := values[currentIndex + i];
 
-      FWriteFlashPage(start, page);
+      FWriteFlashPage(start, page, oldPage);
     end;
 
     // Restore R0-R1
@@ -1196,7 +1196,7 @@ begin
   data[1] := index;          // R30
   data[2] := 0;              // R31
   WriteRegs(29, data);
-  SendData(byte(CMD_SS_SETUP));
+  //SendData(byte(CMD_SS_SETUP));
   OutInstruction(SPMCSR, 29);
   SendInstruction16($95C8);      // Load register from Program Memory (from Z) and store result in R0
   ReadRegs(0, 1, data);
