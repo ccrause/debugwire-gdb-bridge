@@ -166,7 +166,12 @@ end;
 procedure TGdbRspThread.gdb_qSupported(cmd: string);
 begin
   if pos('Supported', cmd) > 0 then
-    gdb_response('hwbreak+;swbreak+;' {$IFDEF memorymap} + 'qXfer:memory-map:read+' {$ENDIF memorymap})
+    gdb_response('hwbreak+;swbreak+;'
+      // For flash writes transfer at least a flash page full of data
+      // to prevent potential repeated erasing of the same flash page
+      // due to data transfer fragementation
+      + 'PacketSize=' + IntToStr(FDebugWire.Device.FlashPageSize) + ';'
+    {$IFDEF memorymap} + 'qXfer:memory-map:read+' {$ENDIF memorymap})
   else if pos('Offsets', cmd) > 0 then
     gdb_response('Text=0;Data=0;Bss=0')
   else if pos('Symbol', cmd) > 0 then
