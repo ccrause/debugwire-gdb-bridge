@@ -969,7 +969,7 @@ procedure TGdbRspServer.FAcceptConnection(Sender: TObject; Data: TSocketStream);
 begin
   if not FActiveThreadRunning then
   begin
-    FLog('Incoming connection from ');// + AddrToString(AStream.PeerAddress));
+    FLog('Incoming connection from ' + AddrToString(Data.RemoteAddress));
     FActiveThread := TGdbRspThread.Create(Data, FDebugWire, @self.FLog);
     FActiveThread.OnTerminate := @FActiveThreadOnTerminate;
     FActiveThreadRunning := true;

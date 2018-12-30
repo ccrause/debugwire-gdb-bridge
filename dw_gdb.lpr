@@ -151,7 +151,7 @@ begin
     // Server will close down once MaxConnections is reached.  Could then wait on Connection thread to finish?
     if rspserver.MaxConnections <> 0 then
     begin
-      WriteLn('Start accepting...');
+      WriteLn('Waiting for TCP connection on port ' + IntToStr(rspserver.Port));
       rspserver.StartAccepting;
     end;
     WriteLn('Done...');
