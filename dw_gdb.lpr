@@ -2,7 +2,7 @@ program dw_gdb;
 
 uses
   {$ifdef unix}cthreads,{$endif}
-  serial, crt, sysutils, serialutils, debugwire,
+  serial, sysutils, serialutils, debugwire,
   binutils, rsp, genutils, getopts;
 
 const
