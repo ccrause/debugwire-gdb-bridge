@@ -1060,56 +1060,48 @@ begin
   else if (length(values) > 0) then
   begin
     {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%}); {$endif}
+    // Cache R0 & R1
+    ReadRegs(0, 2, R0R1);
     pageMask := FDevice.flashSize - FDevice.FlashPageSize;
     SetLength(page, FDevice.FlashPageSize);
     remainingLength := length(values);
-    // Cache R0 & R1
-    ReadRegs(0, 2, R0R1);
-
     currentIndex := 0;  // start at starting point of values
 
-    // Check if start falls inside a page
-    // If so, fill first part of page with existing content
-    PageStart := start and pageMask;
-    if (start > PageStart) then
+    while remainingLength > 0 do
     begin
+      PageStart := start and pageMask;
       ReadFlash(PageStart, FDevice.FlashPageSize, oldPage);
-      page := copy(oldPage);
-      len := min(FDevice.FlashPageSize, length(values));
-      for i := 0 to len-1 do
-        page[start - PageStart + i] := values[i];
+
+      if (start > PageStart) then  // start falls inside page boundary
+      begin
+        page := copy(oldPage);
+        len := min(FDevice.FlashPageSize, length(values));
+        for i := 0 to len-1 do
+          page[start - PageStart + i] := values[i];
+
+        partLength := FDevice.FlashPageSize - (start - PageStart);
+      end
+      else if remainingLength >= FDevice.FlashPageSize then  // enough data to fill whole flash page
+      begin
+        page := copy(values, currentIndex, FDevice.FlashPageSize);
+        partLength := FDevice.FlashPageSize;
+      end
+      else // last bit of data not enough to fill whole page
+      begin
+        page := copy(oldPage);
+        for i := 0 to remainingLength-1 do
+          page[i] := values[currentIndex + i];
+
+        partLength := remainingLength;
+      end;
 
       FWriteFlashPage(PageStart, page, oldPage);
-      partLength := FDevice.FlashPageSize - ((FDevice.FlashPageSize - 1) and start);
       start := start + partLength;
       currentIndex := currentIndex + partLength;
       if partLength < remainingLength then
         remainingLength := remainingLength - partLength
       else
-        remainingLength := 0;;
-    end;
-
-    // Whole pages
-    while remainingLength > FDevice.FlashPageSize do
-    begin
-      ReadFlash(PageStart, FDevice.FlashPageSize, oldPage);
-      page := copy(values, currentIndex, FDevice.FlashPageSize);
-      FWriteFlashPage(start, page, oldPage);
-      start := start + FDevice.FlashPageSize;
-      currentIndex := currentIndex + FDevice.FlashPageSize;
-      remainingLength := remainingLength - FDevice.FlashPageSize;
-    end;
-
-    if remainingLength > 0 then
-    begin
-      ReadFlash(start, FDevice.FlashPageSize, oldPage);
-      page := copy(oldPage);
-
-      // Copy new data on top of existing data
-      for i := 0 to remainingLength-1 do
-        page[i] := values[currentIndex + i];
-
-      FWriteFlashPage(start, page, oldPage);
+        remainingLength := 0;
     end;
 
     // Restore R0-R1
