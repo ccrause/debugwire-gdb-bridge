@@ -951,11 +951,11 @@ begin
   if (FDevice.bootStart > 0) then
   begin
     // TODO: Consider need to first check if RWWSRE or SELFPRGEN is set?
-    SetPC(FDevice.bootStart);  // Set PC to boot loader section to execute SPM instruction
     SetLength(data, 1);
     data[0] := RWWSRE or SPMEN;
     WriteRegs(29, data); // r29 := RWWSRE
     OutInstruction(SPMCSR, 29);  // out SPMCSR,r29
+    SetPC(FDevice.bootStart);  // Set PC to boot loader section to execute SPM instruction
     SendInstruction16(OpCode_SPM);       // spm
   end;
   {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
