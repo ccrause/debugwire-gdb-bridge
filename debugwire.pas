@@ -1075,11 +1075,15 @@ begin
       if (start > PageStart) then  // start falls inside page boundary
       begin
         page := copy(oldPage);
-        len := min(FDevice.FlashPageSize, length(values));
+        len := length(values);
+        if ((start + len) and pageMask > PageStart) then // end falls in next page
+          len := len - ((start + len) and (FDevice.FlashPageSize - 1));
+
+        len := min(FDevice.FlashPageSize, len);
         for i := 0 to len-1 do
           page[start - PageStart + i] := values[i];
 
-        partLength := FDevice.FlashPageSize - (start - PageStart);
+        partLength := len;
       end
       else if remainingLength >= FDevice.FlashPageSize then  // enough data to fill whole flash page
       begin
