@@ -11,10 +11,10 @@ https://github.com/mvirkkunen/dwprog
 https://github.com/jbtronics/WireDebugger  
 
 ## TODO:
-* Add breakpoint manager for more than one breakpoint.
-  * Execute stored instruction when continuing after break - SW BP disabled for testing.
-  * When deleting a SW BP, restore original instruction (flash write). (disabled while testing)
-  * During flash read/write check if inactive SW BP may still have BREAK opcode in flash - if so handle specific opcode in BP manager.
+* ~~Add breakpoint manager for more than one breakpoint.~~
+  * ~~Execute stored instruction when continuing after break - SW BP disabled for testing.~~
+  * ~~When deleting a SW BP, restore original instruction (flash write). (disabled while testing)~~
+  * ~~During flash read/write check if inactive SW BP may still have BREAK opcode in flash - if so handle specific opcode in BP manager.~~
   * ~~Put first BP in HW~~ Done
   * ~~Further BP in list, with corresponding opcode replaced with break (flash write). Store opcode in manager.~~ Done
   * ~~If HW BP deleted, keep HW BP open until next BP is set to minimize flash rewrites.~~ Done
