@@ -14,6 +14,7 @@ type
     active: boolean;  // Mark active if BP should be set when stepping/continuing
     written: boolean; // Whether BP opcode was written to flash
   end;
+  PBP = ^TBP;
 
   TFlashPageBPs = record
     PageAddress: dword;
@@ -55,6 +56,7 @@ type
     // and only rewrite sw BPs if necessary
     procedure FinalizeBPs;
     procedure PrintBPs;
+    function findSWBPFromAddress(address: word): PBP;
   end;
 
 implementation
@@ -72,6 +74,7 @@ var
   PageAddr: dword;
   i, j: integer;
   page: ^TFlashPageBPs;
+  newBP: boolean = true;
 begin
   if address >= FDebugWire.Device.flashSize then
   begin
@@ -147,15 +150,20 @@ begin
           page^.BreakPoints[j+1] := page^.BreakPoints[j];
           page^.BreakPoints[j+1].origCode := copy(page^.BreakPoints[j].origCode);
         end;
-      end;
+      end
+      else
+        newBP := false;
     end;
 
-    page^.BreakPoints[i].address := address;
-    page^.BreakPoints[i].active := true;
-    page^.BreakPoints[i].written := false;
-    page^.BreakPoints[i].bpsize := 2;
-    // opcode gets read later
-    //FDebugWire.ReadAddress(address, 2, page^.BreakPoints[i].origCode);
+    if newBP then
+    begin
+      page^.BreakPoints[i].address := address;
+      page^.BreakPoints[i].active := true;
+      page^.BreakPoints[i].written := false;
+      page^.BreakPoints[i].bpsize := 2;
+    end
+    else
+      page^.BreakPoints[i].active := true;
   end;
 end;
 
@@ -212,9 +220,7 @@ end;
 
 procedure TBPManager.DeleteBP(address: dword);
 var
-  i, j: integer;
-  PageAddr: dword;
-  err: boolean;
+  BP: PBP;
 begin
   // Out of range addresses rejected in AddBP, so just exit here, no need for further cleanup
   if address >= FDebugWire.Device.flashSize then
@@ -223,39 +229,16 @@ begin
     exit;
   end;
 
-  err := false;
   if HWBP.address = address then
     HWBP.active := false
   else
   begin
-    // first locate appropriate page
-    PageAddr := address and FPageMask;
-    i := 0;
-    while (i < length(FlashPagesWithBPs)) and (FlashPagesWithBPs[i].PageAddress < PageAddr) do
-      inc(i);
-
-    if FlashPagesWithBPs[i].PageAddress = PageAddr then // located BP
-    begin
-      if length(FlashPagesWithBPs[i].BreakPoints) = 0 then
-        err := true
-      else
-      begin
-        j := 0;
-        while (j < length(FlashPagesWithBPs[i].BreakPoints)) and (FlashPagesWithBPs[i].BreakPoints[j].address <> address) do
-          inc(j);
-
-        if j < length(FlashPagesWithBPs[i].BreakPoints) then
-          FlashPagesWithBPs[i].BreakPoints[j].active := false
-        else
-          err := true;
-      end;
-    end
+    BP := findSWBPFromAddress(address);
+    if BP <> nil then
+      BP^.active := false
     else
-      err := true;
+      FLog('BP ERROR - breakpoint $' + hexStr(address, 4) + ' not found for deletion');
   end;
-
-  if err then
-    FLog('BP ERROR - breakpoint $' + hexStr(address, 4) + ' not found for deletion');
 end;
 
 procedure TBPManager.DeleteAllBPs;
@@ -284,7 +267,7 @@ var
   BreakOpcode: TBytes;
   hwbInUse, MustLoadPage, MustSavePage: boolean;
   tempPage: TBytes;
-  current: ^TBP;
+  current: PBP;
 begin
   SetLength(BreakOpcode, 2);
   BreakOpcode[0] := $98; BreakOpcode[1] := $95;
@@ -382,8 +365,10 @@ begin
     end;
 
     if MustSavePage then
-      FLog('Skipping memory write');
-    //  FDebugWire.WriteFlash(FlashPagesWithBPs[i].PageAddress, tempPage);
+    begin
+      FLog('Update breaks & opcodes for page: ' + hexStr(FlashPagesWithBPs[i].PageAddress, 4));
+      FDebugWire.WriteFlash(FlashPagesWithBPs[i].PageAddress, tempPage);
+    end;
 
     // check if there are BPs left, delete this page item if not
     if length(FlashPagesWithBPs[i].BreakPoints) = 0 then
@@ -393,7 +378,7 @@ begin
         FCopyFlashPageWithBPs(FlashPagesWithBPs[k+1], FlashPagesWithBPs[k]);
       end;
       SetLength(FlashPagesWithBPs, length(FlashPagesWithBPs)-1);
-      dec(i);  // hack to keep j pointing to the next record which now shifted up 1 position
+      dec(i);  // hack to keep i pointing to the next record which now shifted up 1 position
     end;
 
     inc(i);
@@ -423,6 +408,38 @@ begin
          bp^.bpsize]));
     end;
   end;
+end;
+
+function TBPManager.findSWBPFromAddress(address: word): PBP;
+var
+  i, j: integer;
+  thisPage: word;
+begin
+  thisPage := address and FPageMask;
+  i := 0;
+  while (i < length(FlashPagesWithBPs)) and (FlashPagesWithBPs[i].PageAddress <> thisPage) do
+  begin
+    inc(i);
+  end;
+
+  if (i < length(FlashPagesWithBPs)) then
+  begin
+    j := 0;
+    while (j < length(FlashPagesWithBPs[i].BreakPoints)) and
+           FlashPagesWithBPs[i].BreakPoints[j].active and     // is there a case for inactive BP?
+          (FlashPagesWithBPs[i].BreakPoints[j].address <> address) do
+    begin
+      inc(j);
+    end;
+    if (j < length(FlashPagesWithBPs[i].BreakPoints)) then
+    begin
+      Result := @FlashPagesWithBPs[i].BreakPoints[j]
+    end
+    else
+      Result := nil;
+  end
+  else
+    Result := nil;
 end;
 
 end.

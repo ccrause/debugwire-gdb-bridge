@@ -238,9 +238,26 @@ begin
   FDebugWire.Run;
 end;
 
-procedure TGdbRspThread.DebugStep;
+procedure TGdbRspThread.DebugStep();
+var
+  instruction, oldPC: word;
+  ActiveBPRecord: PBP;
 begin
-  FDebugWire.Step;
+  oldPC := FDebugWire.PC;
+  ActiveBPRecord := FBPManager.findSWBPFromAddress(oldPC);
+  if ActiveBPRecord <> nil then
+  begin
+    if length(ActiveBPRecord^.origCode) = 2 then
+    begin
+      instruction := ActiveBPRecord^.origCode[0] + (ActiveBPRecord^.origCode[1] shl 8);
+      FDebugWire.SendInstruction16(instruction);
+      FDebugWire.PC := oldPC + 2;
+    end
+    else
+      FLog('Unexpected instruction code length');
+  end
+  else
+    FDebugWire.Step;
 end;
 
 procedure TGdbRspThread.DebugGetRegisters;
@@ -833,6 +850,7 @@ begin
                 //Done: call BP manager to remove HW & SW BPs
                 FBPManager.DeleteAllBPs;
                 FBPManager.FinalizeBPs;
+                FBPManager.PrintBPs;     // debug
                 FDebugWire.Run;
               end;
 
@@ -1039,6 +1057,7 @@ begin
   if targetOK then
   begin
     FDebugWire.Reset;   // reset MCU
+    FDebugWire.PC := 0;
   end
   else
   begin
