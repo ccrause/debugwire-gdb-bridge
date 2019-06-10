@@ -3,7 +3,7 @@ unit binutils;
 interface
 
 uses
-  SysUtils, Classes;
+  Classes, SysUtils, debugwire;
 
 type
   TBinRecType = (brData=0, brEOF, brExtSegAddr, brStartSegAddr, brExtLinearAddr, brStartLinearAddr);
@@ -18,7 +18,7 @@ type
   TBinArray = array of TBinRecord;
 
 function readHexFile(SL: TStringList): TBinArray;
-//function readHexFile(const fileName: string): TBytes;
+procedure programHexFile(const fileName: string; dw: TDebugWire);
 
 implementation
 
@@ -31,14 +31,10 @@ begin
 end;
 
 function readHexFile(SL: TStringList): TBinArray;
-  //const fileName: string): TBytes;
 var
-  //SL: TStringList;
   line, s: string;
   i, j, k, data, checksum: byte;
 begin
-  //SL := TStringList.Create;
-  //SL.LoadFromFile(fileName);
   SetLength(Result, 0);
   i := 0;
 
@@ -130,6 +126,30 @@ begin
     begin
       i := j;
       inc(j);
+    end;
+  end;
+end;
+
+procedure programHexFile(const fileName: string; dw: TDebugWire);
+var
+  i, j: integer;
+  SL: TStringList;
+  binArray: TBinArray;
+begin
+  if FileExists(fileName) then
+  begin
+    SL := TStringList.Create;
+    SL.LoadFromFile(fileName);
+    binArray := readHexFile(SL);
+
+    for i := 0 to length(binArray)-1 do
+    begin
+      case binArray[i].recordType of
+        brData : DW.WriteFlash(binArray[i].address, binArray[i].data);
+        brEOF  : WriteLn('End of Hex data');
+      else
+        WriteLn('Unexpected record type for hex record', binArray[i].recordType);
+      end;
     end;
   end;
 end;
