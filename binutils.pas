@@ -33,7 +33,8 @@ end;
 function readHexFile(SL: TStringList): TBinArray;
 var
   line, s: string;
-  i, j, k, data, checksum: byte;
+  i, j, k: integer;
+  data, checksum: byte;
 begin
   SetLength(Result, 0);
   i := 0;
