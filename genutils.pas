@@ -34,12 +34,26 @@ begin
 end;
 
 function PrintRegs(regs: TBytes; startreg: byte): string;
+var
+  s1, s2: string;
 begin
   result := '';
+  s1 := '';
+  s2 := '';
   repeat
-    result := result + Format('R%.2d: $%.2x', [startreg, regs[startreg]]) + LineEnding;
+    s1 := s1 + Format('R%.2d ', [startreg]);
+    s2 := s2 + Format('$%.2x ', [regs[startreg]]);
     inc(startreg);
+    if startreg mod 16 = 0 then
+    begin
+      result := result + s1 + LineEnding + s2 + LineEnding + LineEnding;
+      s1 := '';
+      s2 := '';
+    end;
   until startreg >= length(regs);
+
+  if s1 <> '' then
+    result := result + s1 + LineEnding + s2 + LineEnding;
 end;
 
 end.

@@ -35,11 +35,14 @@ end;
 
 procedure runCmdHelp;
 begin
-  WriteLn('  r - Run controller');
-  WriteLn('  s - Step single instruction');
-  WriteLn('  b <val> - Set break point at <val> (each value overwrites previous value). Negative value means no break point.');
-  WriteLn('  x - Interrupt running controller');
-
+  WriteLn('  b <val>           - Set break point at <val> (each value overwrites previous value). Negative value means no break point.');
+  WriteLn('  d <start> <count> - Dump <count> bytes of data starting at <start> address. Addresses start at registers, then I/O registers, then SRAM.');
+  WriteLn('  f <start> <count> - Dump <count> bytes of flash starting at <start> address.');
+  WriteLn('  h, ?              - Show this help');
+  WriteLn('  l <filename.hex>  - Load hex file to controller');
+  WriteLn('  r                 - Run controller');
+  WriteLn('  s                 - Step single instruction');
+  WriteLn('  x                 - Interrupt running controller');
 end;
 
 procedure DumpSRAM(start, count: word);
@@ -62,11 +65,11 @@ begin
   WriteLn('Flash just after PC:');
   DW.ReadFlash(DW.PC, 16, data);  // offset after regs & IOregs
   WriteLn(FormatDataWithIndex(data, DW.PC, 4));
-  WriteLn;
+  //WriteLn;
   WriteLn('Registers:');
   DW.ReadAddress(0, 32, data);
-  WriteLn(FormatDataWithIndex(data, 0, 1));
-  WriteLn;
+  WriteLn(PrintRegs(data, 0));
+  //WriteLn;
 end;
 
 var
@@ -75,10 +78,10 @@ var
   baud: integer = 0;
   serialPort: string;
   DisableDWENfuse: boolean = false;
-  ID, err: integer;
+  ID, err, startID, count: integer;
   b: byte;
   isRunning: boolean = false;
-  s: string;
+  s, s1, s2: string;
 
 begin
   DW := TDebugWire.Create;
@@ -149,11 +152,79 @@ begin
 
     runCmdHelp;
     repeat
-      if keypressed then
-        Read(c)
+      if crt.keypressed then
+        system.Read(c)
       else
         c := #0;
       case c of
+        'b': if not isRunning then
+             begin
+               system.ReadLn(s);
+               Val(s, ID, err);
+               if err = 0 then
+                 DW.BP := ID
+               else
+                 WriteLn('Invalid <val>');
+             end;
+        'd': if not isRunning then
+             begin
+               // format: d <start> <count>
+               system.ReadLn(s);
+               s := trim(s);
+               ID := pos(' ', s);
+               s1 := copy(s, 1, ID-1);
+               s2 := copy(s, ID, length(s));
+               Val(s1, startID, err);
+               if err = 0 then
+                 Val(s2, count, err);
+               if err = 0 then
+               begin
+                 DW.ReadAddress(startID, count, data);  // offset after regs & IOregs
+                 WriteLn(FormatDataWithIndex(data, startID, 32));
+               end
+               else
+               begin
+                 WriteLn('Invalid format for command <d>. Example:');
+                 WriteLn('d $100 $20');
+               end;
+             end;
+        'f': if not isRunning then
+             begin
+               // format: f <start> <count>
+               system.ReadLn(s);
+               s := trim(s);
+               ID := pos(' ', s);
+               s1 := copy(s, 1, ID-1);
+               s2 := copy(s, ID, length(s));
+               Val(s1, startID, err);
+               if err = 0 then
+                 Val(s2, count, err);
+               if err = 0 then
+               begin
+                 DW.ReadFlash(startID, count, data);
+                 WriteLn(FormatDataWithIndex(data, startID, 32));
+               end
+               else
+               begin
+                 WriteLn('Invalid format for command <f>. Example:');
+                 WriteLn('f $100 $20');
+               end;
+             end;
+        'h', '?': runCmdHelp;
+        'l': if not isRunning then
+             begin
+               system.ReadLn(s);
+               s := trim(s);
+               if FileExists(s) then
+               begin
+                 programHexFile(s, DW);
+                 DW.Reset;
+                 DW.Reconnect;
+                 DW.PC := 0;
+               end
+               else
+                 WriteLn('Invalid file name - file doesn''t exist')
+             end;
         'r': if not isRunning then
              begin
                isRunning := true;
@@ -170,15 +241,6 @@ begin
                DW.BreakCmd;
                printDebugState;
                isRunning := false;
-             end;
-        'b': if not isRunning then
-             begin
-               ReadLn(s);
-               Val(s, ID, err);
-               if err = 0 then
-                 DW.BP := ID
-               else
-                 WriteLn('Invalid <val>');
              end;
       end;
 
