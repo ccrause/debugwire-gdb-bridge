@@ -829,7 +829,7 @@ end;
 procedure TDebugWire.WriteAddress(startAddress: word; const values: TBytes);
 var
   data: TBytes;
-  limit, i: byte;
+  limit, i: word;
 begin
   SetLength(data, 3);
   SetZreg(startAddress);
@@ -904,6 +904,7 @@ begin
   begin
     FLog('Erasing flash page starting at: $' + hexStr(startAddress, 4));
     FEraseFlashPage(startAddress);
+    FReEnableRWW;  // re-enable RWW section
   end;
 
   if doWrite then
@@ -913,9 +914,8 @@ begin
 
     FLog('Write flash page buffer');
     FWritePageBuffer(startAddress, newPage);
+    FReEnableRWW;  // re-enable RWW section
   end;
-
-  FReEnableRWW;
 end;
 
 procedure TDebugWire.FEraseFlashPage(startAddress: word);
@@ -1050,7 +1050,7 @@ var
   R0R1: TBytes;
   page, oldPage: TBytes;
   partLength, pageMask, PageStart, remainingLength, currentIndex: word;
-  len, i: byte;
+  len, i: word;
 begin
   if start + length(values) > FDevice.flashSize then
   begin
@@ -1076,8 +1076,8 @@ begin
       begin
         page := copy(oldPage);
         len := length(values);
-        if ((start + len) and pageMask > PageStart) then // end falls in next page
-          len := len - ((start + len) and (FDevice.FlashPageSize - 1));
+        if ((start + len - 1) and pageMask) > PageStart then // end falls in next page
+          len :=  FDevice.FlashPageSize - (start and (FDevice.FlashPageSize - 1));
 
         len := min(FDevice.FlashPageSize, len);
         for i := 0 to len-1 do
