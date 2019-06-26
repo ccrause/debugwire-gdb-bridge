@@ -426,7 +426,6 @@ begin
   begin
     j := 0;
     while (j < length(FlashPagesWithBPs[i].BreakPoints)) and
-           FlashPagesWithBPs[i].BreakPoints[j].active and     // is there a case for inactive BP?
           (FlashPagesWithBPs[i].BreakPoints[j].address <> address) do
     begin
       inc(j);
