@@ -42,6 +42,7 @@ begin
   WriteLn('  l <filename.hex>  - Load hex file to controller');
   WriteLn('  r                 - Run controller');
   WriteLn('  s                 - Step single instruction');
+  WriteLn('  q                 - Quit');
   WriteLn('  x                 - Interrupt running controller');
 end;
 
