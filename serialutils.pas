@@ -7,7 +7,7 @@ uses
 
 const
   NCCS = 19;
-  BAUDforManualBreak = 1200;
+  BAUDforManualBreak = 9600;
 
 type
   {$PACKRECORDS C}
@@ -274,7 +274,7 @@ begin
 
   {$IFNDEF WINDOWS}FHandle := -1{$ELSE}FHandle := ERROR_INVALID_HANDLE{$ENDIF};
   FBreakType := btShort;  // use shorter break sequence
-  FBreakBaudRate := 1200; // baud rate for sending 0 to simulate a break signal
+  FBreakBaudRate := BAUDforManualBreak; // baud rate for sending 0 to simulate a break signal
 end;
 
 destructor TSerialObj.Destroy;
