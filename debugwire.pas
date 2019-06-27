@@ -107,6 +107,8 @@ type
     procedure SetZreg(const val: word); // require follow-up FPushSerialBuffer
     // Use with caution, may change R29...R31
     procedure ReadRegs(const start, count: byte; out values: TBytes);
+    // Csll ReadRegs, then substitute cached registers in values
+    procedure safeReadRegs(const start, count: byte; out values: TBytes);
     procedure WriteRegs(const start: byte; const values: TBytes);  // require follow-up FPushSerialBuffer
 
     // regs, IO & SRAM
@@ -713,6 +715,16 @@ begin
     SendData(cmds);
   end;
   ReadData(count, values);
+end;
+
+procedure TDebugWire.safeReadRegs(const start, count: byte; out values: TBytes);
+var
+  i: integer;
+begin
+  ReadRegs(start, count, values);
+  for i := start to count-1 do
+    if (i >= FRegCacheStart) and (i < (FRegCacheStart + FRegCacheLength)) then
+      values[i] := FCachedRegs[i - FRegCacheStart];
 end;
 
 procedure TDebugWire.WriteRegs(const start: byte; const values: TBytes);

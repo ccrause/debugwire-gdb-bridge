@@ -234,6 +234,7 @@ end;
 
 procedure TGdbRspThread.DebugContinue;
 begin
+  FLog('PC = ' + hexStr(FDebugWire.PC, 4));
   FDebugState := dsRunning;
   FDebugWire.Run;
 end;
@@ -266,7 +267,7 @@ var
   resp: string;
   i: integer;
 begin
-  FDebugWire.ReadRegs(0, 32, data);
+  FDebugWire.safeReadRegs(0, 32, data);
   resp := '';
   for i := 0 to length(data)-1 do
     resp := resp + hexStr(data[i], 2);
@@ -298,7 +299,7 @@ begin
     regID := StrToInt('$'+cmd);
     case regID of
       0..31: begin // normal registers
-               FDebugWire.ReadRegs(regID, 1, data);
+               FDebugWire.safeReadRegs(regID, 1, data);
              end;
       32: FDebugWire.ReadAddress($5F, 1, data); // SREG
 
@@ -399,7 +400,7 @@ begin
 
     case regID of
       // normal registers
-      0..31: FDebugWire.ReadRegs(regID, 1, data);
+      0..31: FDebugWire.WriteRegs(regID, data);
       // SREG
       32: FDebugWire.WriteAddress($5F, data);
       // SPL, SPH
