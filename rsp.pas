@@ -8,7 +8,7 @@ uses
 
 type
 
-  { $DEFINE memorymap}
+  {$DEFINE memorymap}
 
   {TGdbRspThread }
   TDebugState = (dsPaused, dsRunning);
@@ -29,7 +29,8 @@ type
     FLogger: TLog;
     FBPManager: TBPManager;
     FLastCmd: string;  // in case a resend is required;
-
+    FFlashWriteBuffer: array of TFlashWriteBuffer;
+    FMemoryMap: string;
     procedure FLog(s: string);
 
     function gdb_fieldSepPos(cmd: string): integer;
@@ -48,9 +49,10 @@ type
     procedure DebugSetRegisters(cmd: string);
     procedure DebugSetRegister(cmd: string);
     procedure DebugGetMemory(cmd: string);
-    procedure DebugSetMemory(cmd: string);
+    procedure DebugSetMemoryHex(cmd: string);
+    procedure DebugSetMemoryBinary(cmd: string);
     {$IFDEF memorymap}
-    procedure DebugMemoryMap;
+    procedure DebugMemoryMap(cmd: string);
     procedure DecodeBinary(const s: string; out data: TBytes);
     procedure EncodeBinary(const data: TBytes; out s: string);
     procedure DebugFlashErase(cmd: string);
@@ -239,7 +241,7 @@ begin
   FDebugWire.Run;
 end;
 
-procedure TGdbRspThread.DebugStep();
+procedure TGdbRspThread.DebugStep;
 var
   instruction, oldPC: word;
   ActiveBPRecord: PBP;
@@ -272,7 +274,7 @@ begin
   for i := 0 to length(data)-1 do
     resp := resp + hexStr(data[i], 2);
 
-  // Eliminate gdb error when reply stars with E
+  // Eliminate gdb error when reply starts with E
   resp := LowerCase(resp);
 
   // SREG
@@ -478,7 +480,7 @@ begin
   gdb_response(s);
 end;
 
-procedure TGdbRspThread.DebugSetMemory(cmd: string);
+procedure TGdbRspThread.DebugSetMemoryHex(cmd: string);
 var
   len, i: integer;
   s: string;
@@ -535,34 +537,95 @@ begin
   gdb_response('OK');
 end;
 
+// X addr,len:XX...
+procedure TGdbRspThread.DebugSetMemoryBinary(cmd: string);
+var
+  len: integer;
+  s: string;
+  addr: dword;
+  data: TBytes;
+begin
+  delete(cmd, 1, 1);
+  len := gdb_fieldSepPos(cmd);
+  s := '$' + copy(cmd, 1, len-1);
+  addr := StrToInt(s);
+  delete(cmd, 1, len);
+
+  len := gdb_fieldSepPos(cmd);
+  s := '$' + copy(cmd, 1, len-1);
+  delete(cmd, 1, len);
+  len := StrToInt(s);
+
+  // now convert data
+  DecodeBinary(cmd, data);
+  if len = length(data) then // ensure decoding yields the expected length data
+  begin
+    if (addr + len) < $800000 then // flash memory
+    begin
+      if (addr + len) < FDebugWire.Device.flashSize then
+        FDebugWire.WriteFlash(addr, data)
+      else
+      begin
+        FLog('Error: Flash address exceeds device limit');
+        SetLength(data, 0);
+      end;
+    end
+    else if (addr + len) < $810000 then // SRAM
+    begin
+      addr := addr and $FFFF;
+      if addr < 32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize then
+        FDebugWire.WriteAddress(addr, data)
+      else
+      begin
+        FLog('Error: Memory address exceeds device limit');
+        SetLength(data, 0);
+      end;
+    end
+    else // must be EEPROM then
+    begin
+      FLog('Error: EEPROM access not supported yet.');
+      SetLength(data, 0);
+    end;
+
+    gdb_response('OK');
+  end
+  else
+  begin
+    FLog('Decoded length <> expected length of binary data.');
+    gdb_response('E02');
+  end;
+end;
+
 // Supporting  qXfer:memory-map requires support for vFlashErase/vFlashWrite commands
 // to write to flash
 // Support for this disabled at the moment
 {$IFDEF memorymap}
-procedure TGdbRspThread.DebugMemoryMap;
+procedure TGdbRspThread.DebugMemoryMap(cmd: string);
 var
+  i, offset, len: integer;
   s: string;
 begin
-  // Formatting from simavr
-  //s := format('l<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
-  //            [FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
+  i := pos('::', cmd);
+  delete(cmd, 1, i+1);
+  i := gdb_fieldSepPos(cmd);
+  s := '$' + copy(cmd, 1, i-1);
+  offset := StrToInt(s);
+  delete(cmd, 1, i);
+  len := StrToInt('$' + cmd);
 
-   //This isn't accepted by gdb without the 'l', from simulavr
-  s := 'l<?xml version="1.0"?> '+ LineEnding +
-       '<!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" "http://sourceware.org/gdb/gdb-memory-map.dtd"> '+ LineEnding +
-       '<memory-map> '+ LineEnding +
-       '  <memory type="ram" start="0x800000" length="0x'+ HexStr(FDebugWire.Device.sramSize, 4) + '"/>'+ LineEnding +
-       '  <memory type="flash" start="0x00" length="0x'+ HexStr(FDebugWire.Device.flashSize, 4) +'">'+ LineEnding +
-       '    <property name="blocksize">0x'+ HexStr(FDebugWire.Device.FlashPageSize, 4) +'</property>'+ LineEnding +
-       '  </memory>'+ LineEnding +
-       '</memory-map>';
+  // If requested length < memory map size, perpend "m", else "l"
+  if (offset + len) < length(FMemoryMap) then
+    s := 'm' + copy(FMemoryMap, 1+offset, len)
+  else
+    s := 'l' + copy(FMemoryMap, 1+offset, len);
 
   gdb_response(s);
 end;
 
 procedure TGdbRspThread.DecodeBinary(const s: string; out data: TBytes);
 var
-  i, j: integer;
+  i, j, n: integer;
+  repeatData: byte;
 begin
   SetLength(data, 128);
   // s should start before ':', then scan until ending #
@@ -575,17 +638,33 @@ begin
     begin
       inc(i);  // read next character
       data[j] := ord(s[i]) XOR $20;
+      inc(j);
     end
     else if s[i] = '*' then //run length encoding
     begin
-      FLog('Unexpected run length encoding detected.');
+      if j > 0 then
+      begin
+        // repeat count in next byte
+        // previous byte is repeated
+        inc(i);
+        n := ord(s[i]) - 29;
+        repeatData := data[j-1];
+        while n > 0 do
+        begin
+          data[j] := repeatData;
+          inc(j);
+          dec(n);
+        end;
+      end
+      else
+        FLog('Unexpected run length encoding detected at start of data.');
     end
     else
     begin
       data[j] := ord(s[i]);
+      inc(j);
     end;
     inc(i);
-    inc(j);
     if j > length(data) then
       SetLength(data, j + 128);
   end;
@@ -603,7 +682,7 @@ begin
   for i := 0 to high(data) do
   begin
     case data[i] of
-      $23, $24, $2A, $7D:
+      $23, $24, $2A, $7D:    // #, $, *, }
         begin
           s[j] := '}';
           inc(j);
@@ -621,20 +700,10 @@ begin
 end;
 
 // ‘vFlashErase:addr,length’
+// Do nothing for now
+// debugwire automatically erase flash as required when writing
 procedure TGdbRspThread.DebugFlashErase(cmd: string);
-var
-  i, j: integer;
-  addr, len: integer;
 begin
-  i := pos(':', cmd);
-  j := pos(',', cmd);
-  if (i > 0) and (j > 0) and (j > i + 1) then
-  begin
-    addr := StrToInt('$'+copy(cmd, i+1, j-i-1));
-    len := StrToInt('$'+copy(cmd, j+1, length(cmd)));
-
-    // do nothing for now
-  end;
   gdb_response('OK');
 end;
 
@@ -642,7 +711,7 @@ end;
 procedure TGdbRspThread.DebugFlashWrite(cmd: string);
 var
   i, j: integer;
-  addr, len: integer;
+  addr: integer;
   data: TBytes;
   newbuffer: boolean;
 begin
@@ -664,7 +733,9 @@ begin
       SetLength(FFlashWriteBuffer[i-1].Data, j + length(data));
       Move(data[0], FFlashWriteBuffer[i-1].Data[j], length(data));
       newbuffer := false;
-    end;
+    end
+    else
+      newbuffer := true;
   end;
 
   if newbuffer then
@@ -674,25 +745,30 @@ begin
     FFlashWriteBuffer[i].Data := copy(data, 0, length(data));
   end;
 
-  //FDebugWire.WriteFlash(addr, data);
-
-  gdb_response('OK');
+  gdb_response('OK')
 end;
 
 procedure TGdbRspThread.DebugFlashWriteDone;
 var
-  i, j: integer;
+  i: integer;
+  isGood: boolean;
 begin
-  i := length(FFlashWriteBuffer);
-  if i > 0 then
+  isGood := true;
+  for i := 0 to high(FFlashWriteBuffer) do
   begin
-    for j := 0 to i-1 do
+    if FFlashWriteBuffer[i].addr <= FDebugWire.Device.flashSize then
+      FDebugWire.WriteFlash(FFlashWriteBuffer[i].addr, FFlashWriteBuffer[i].data)
+    else
     begin
-      if length(FFlashWriteBuffer[j].Data) > 0 then
-        FDebugWire.WriteFlash(FFlashWriteBuffer[j].addr, FFlashWriteBuffer[j].Data);
+      isGood := false;
+      FLog('unexpected address passed to DebugFlashWrite');
     end;
-    SetLength(FFlashWriteBuffer, 0);
   end;
+
+  if isGood then
+    gdb_response('OK')
+  else
+    gdb_response('E00');
 end;
 
 {$ENDIF memorymap}
@@ -743,6 +819,18 @@ begin
   FDebugState := dsPaused;
   FLogger := logger;
   FBPManager := TBPManager.Create(FDebugWire, logger);
+  if dw.Device.ID > 0 then
+    FMemoryMap := format('<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
+                  [FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
+
+  //FMemoryMap := '<?xml version="1.0"?> '+ LineEnding +
+  //     '<!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" "http://sourceware.org/gdb/gdb-memory-map.dtd"> '+ LineEnding +
+  //     '<memory-map> '+ LineEnding +
+  //     '  <memory type="ram" start="0x800000" length="0x'+ HexStr(FDebugWire.Device.sramSize, 4) + '"/>'+ LineEnding +
+  //     '  <memory type="flash" start="0x00" length="0x'+ HexStr(FDebugWire.Device.flashSize, 4) +'">'+ LineEnding +
+  //     '    <property name="blocksize">0x'+ HexStr(FDebugWire.Device.FlashPageSize, 4) +'</property>'+ LineEnding +
+  //     '  </memory>'+ LineEnding +
+  //     '</memory-map>';
 end;
 
 function pos_(const c: char; const s: RawByteString): integer;
@@ -871,9 +959,7 @@ begin
             'm': DebugGetMemory(cmd);
 
             // Write memory
-            // TODO: also support X - binary equivalent.
-            'M': DebugSetMemory(cmd);
-
+            'M': DebugSetMemoryHex(cmd);
 
             'p': DebugGetRegister(cmd);
 
@@ -883,7 +969,7 @@ begin
                    gdb_qSupported(cmd)
             {$IFDEF memorymap}
                  else if pos('Xfer:memory-map:read', cmd) > 0 then
-                   DebugMemoryMap
+                   DebugMemoryMap(cmd)
             {$ENDIF memorymap}
                  else
                    gdb_response('');
@@ -912,6 +998,10 @@ begin
                      gdb_response('');
                  end;
             {$ENDIF}
+
+            'X': begin
+                   DebugSetMemoryBinary(cmd);
+                 end;
 
             // delete breakpoint
             'z': begin
