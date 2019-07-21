@@ -272,6 +272,9 @@ begin
   for i := 0 to length(data)-1 do
     resp := resp + hexStr(data[i], 2);
 
+  // Eliminate gdb error when reply stars with E
+  resp := LowerCase(resp);
+
   // SREG
   FDebugWire.ReadAddress($5F, 1, data);
   resp := resp + hexStr(data[0], 2);
