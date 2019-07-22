@@ -665,7 +665,7 @@ begin
       inc(j);
     end;
     inc(i);
-    if j > length(data) then
+    if j >= length(data) then
       SetLength(data, j + 128);
   end;
 
@@ -821,7 +821,7 @@ begin
   FBPManager := TBPManager.Create(FDebugWire, logger);
   if dw.Device.ID > 0 then
     FMemoryMap := format('<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
-                  [FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
+                  [32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
 
   //FMemoryMap := '<?xml version="1.0"?> '+ LineEnding +
   //     '<!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" "http://sourceware.org/gdb/gdb-memory-map.dtd"> '+ LineEnding +
