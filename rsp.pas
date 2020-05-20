@@ -640,25 +640,25 @@ begin
       data[j] := ord(s[i]) XOR $20;
       inc(j);
     end
-    else if s[i] = '*' then //run length encoding
-    begin
-      if j > 0 then
-      begin
-        // repeat count in next byte
-        // previous byte is repeated
-        inc(i);
-        n := ord(s[i]) - 29;
-        repeatData := data[j-1];
-        while n > 0 do
-        begin
-          data[j] := repeatData;
-          inc(j);
-          dec(n);
-        end;
-      end
-      else
-        FLog('Unexpected run length encoding detected at start of data.');
-    end
+    //else if s[i] = '*' then //run length encoding
+    //begin
+    //  if j > 0 then
+    //  begin
+    //    // repeat count in next byte
+    //    // previous byte is repeated
+    //    inc(i);
+    //    n := ord(s[i]) - 29;
+    //    repeatData := data[j-1];
+    //    while n > 0 do
+    //    begin
+    //      data[j] := repeatData;
+    //      inc(j);
+    //      dec(n);
+    //    end;
+    //  end
+    //  else
+    //    FLog('Unexpected run length encoding detected at start of data.');
+    //end
     else
     begin
       data[j] := ord(s[i]);
@@ -782,8 +782,8 @@ var
 begin
   s := 'T' + hexStr(signal, 2);
   case stopReason of
-    srHWBP: s := s + 'hwbreak';
-    srSWBP: s := s + 'swbreak';
+    srHWBP: s := s + 'hwbreak:;';
+    srSWBP: s := s + 'swbreak:;';
   end;
 
   // 32 General data
