@@ -29,6 +29,9 @@ begin
   WriteLn('-I, -i, --ispenable');
   WriteLn('Temporarily disable DWEN fuse to enable ISP functionality.');
   WriteLn('');
+  WriteLn('-L <filename.hex>, -l <filename.hex>, --loadfile <filename.hex>');
+  WriteLn('UpLoad file <filename.hex> to controller and exit. Use as standalone programmer.');
+  WriteLn('');
   WriteLn('-H, -h, -?, --help');
   WriteLn('Display this help');
 end;
@@ -74,7 +77,7 @@ begin
 end;
 
 var
-  opts: array [0..4] of TOption;
+  opts: array [0..5] of TOption;
   c: char;
   baud: integer = 0;
   serialPort: string;
@@ -83,6 +86,28 @@ var
   b: byte;
   isRunning: boolean = false;
   s, s1, s2: string;
+
+procedure upload(const filename: string);
+begin
+  DW := TDebugWire.Create();
+
+  if not DW.Connect(serialPort, baud) then
+  begin
+    WriteLn('Could not connect to serial port: ', serialport);
+    halt(-1);
+  end;
+  DW.BreakCmd;
+  if not DW.IdentifyTarget then halt(-1);
+  WriteLn('Device ID: $', hexStr(DW.Device.ID, 4), ' - ', DW.Device.name);
+  DW.Reset;
+
+  if FileExists(filename) then
+  begin
+    programHexFile(s, DW);
+    writeln('Done uploading file: ', s);
+  end;
+  Halt(0);
+end;
 
 begin
   DW := TDebugWire.Create;
@@ -108,12 +133,17 @@ begin
   opts[3].Value := 'I';
 
   opts[4].Flag := nil;
-  opts[4].Has_arg := 0;
-  opts[4].Name := '';
-  opts[4].Value := #0;
+  opts[4].Has_arg := 1;
+  opts[4].Name := 'loadfile';
+  opts[4].Value := 'L';
+
+  opts[5].Flag := nil;
+  opts[5].Has_arg := 0;
+  opts[5].Name := '';
+  opts[5].Value := #0;
 
   repeat
-    c := GetLongOpts('S:s:B:b:Hh?Ii', @opts[0], ID);
+    c := GetLongOpts('S:s:B:b:Hh?IiL:l:', @opts[0], ID);
     case c of
       'S','s': serialPort := OptArg;
       'B', 'b': baud := StrToInt(OptArg);
@@ -123,6 +153,10 @@ begin
           Halt;
         end;
       'I', 'i':  DisableDWENfuse := true;
+      'L', 'l':
+        begin
+          upload(OptArg);
+        end;
     end;
   until c = EndOfOptions;
 
@@ -136,6 +170,11 @@ begin
     DW := TDebugWire.Create();
 
     if not DW.Connect(serialPort, baud) then halt(-1);
+    if DisableDWENfuse then
+    begin
+      DW.DisableDWEN;
+    end;
+
     DW.BreakCmd;
     if not DW.IdentifyTarget then halt(-1);
     WriteLn('Device ID: $', hexStr(DW.Device.ID, 4), ' - ', DW.Device.name);
@@ -151,12 +190,22 @@ begin
     DW.ReadConfig(1, b);
     WriteLn('Lock bits: $', hexStr(b, 2));
 
+    if DisableDWENfuse then
+    begin
+      WriteLn('Finished resetting DWEN fuse. Please disable DWEN over ISP before resetting controller');
+      Halt(0);
+    end;
+
     runCmdHelp;
     repeat
       if crt.keypressed then
         system.Read(c)
       else
+      begin
         c := #0;
+        Sleep(100);
+      end;
+
       case c of
         'b': if not isRunning then
              begin
@@ -219,9 +268,11 @@ begin
                if FileExists(s) then
                begin
                  programHexFile(s, DW);
+                 writeln('Programmed file: ', s);
                  DW.Reset;
                  DW.Reconnect;
                  DW.PC := 0;
+                 writeln('Controller reset.');
                end
                else
                  WriteLn('Invalid file name - file doesn''t exist')
