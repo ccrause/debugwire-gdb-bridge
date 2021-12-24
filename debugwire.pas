@@ -337,9 +337,9 @@ begin
 
      //at least one change in bit pattern, since 0 and 255 are excluded here
      case length(runlength) of
-       7: Result := 97;
-       6: result := 90;
-       5: result := 85;
+       7: Result := 98;
+       6: result := 95;
+       5: result := 90;
        4: result := 80;
        3: result := 70;
        2: result := 60;
@@ -421,32 +421,28 @@ begin
 
     data := BreakResponse;
     if data > 0 then
-    begin
-      scale := FBAUDscale(data);
-      if scale = 100 then
-        BAUDscanDone := true
-      else
-      begin
-        if scale < oldscale then
-        begin
-          FLog('Scale increase predicted, ignore');
-          scale := 97;
-        end
-        else
-          oldscale := scale;
-
-        FLog('Scale = ' + IntToStr(scale) + '%');
-        FSer.BaudRate := (FSer.BaudRate * scale) div 100;
-      end;
-    end
-    else
-    begin // invalid response
       inc(retries);
-      FLog('Invalid response, retry #' + IntToStr(retries));
+    scale := FBAUDscale(data);
+    if scale = 100 then
+      BAUDscanDone := true
+    else
+    begin
+      if scale < oldscale then
+      begin
+        // To get here the bit pattern would have deteriorated,
+        // keep making small steps until the situation improves...
+        FLog('Scale increase predicted, make small adjustment.');
+        scale := 99;
+      end
+      else
+        oldscale := scale;
+
+      FLog('Scale = ' + IntToStr(scale) + '%');
+      FSer.BaudRate := (FSer.BaudRate * scale) div 100;
     end;
 
     FSer.FlushInput;
-  until (retries > 2) or BAUDscanDone;
+  until (retries > 25) or BAUDscanDone;
 
   if (BAUDscanDone) then
   begin
@@ -498,13 +494,8 @@ begin
     status := FSer.ReadTimeout(buf[0], 1, 100);
   end;
 
-  if (buf[0] > 0) and (buf[0] < 255) then
-  begin
-    FLog('BAUD: ' + IntToStr(FSer.BaudRate) + '. Data: ' + IntToStr(buf[0]) + '. Bin: ' + binStr(buf[0], 8));
-    Result := buf[0];
-  end
-  else
-    result := 0;
+  FLog('BAUD: ' + IntToStr(FSer.BaudRate) + '. Data: ' + IntToStr(buf[0]) + '. Bin: ' + binStr(buf[0], 8));
+  Result := buf[0];
 end;
 
 procedure TDebugWire.BreakCmd;

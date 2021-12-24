@@ -170,11 +170,23 @@ begin
   begin
     {$IFDEF WINDOWS}
     status := SetCommBreak(FHandle);
-    Sleep(1);
-    status := ClearCommBreak(FHandle);
     {$ELSE}
     status := FpIOCtl(FHandle, TIOCSBRK, pointer(ptrint(0)));
-    sleep(1);
+    {$ENDIF}
+
+    // Stretch break signal at lower baud rates
+    if FBaudRate > 50000 then
+      sleep(1)
+    else if FBaudRate > 25000 then
+      sleep(2)
+    else if FBaudRate > 12000 then
+      sleep(3)
+    else
+      sleep(4);
+
+    {$IFDEF WINDOWS}
+    status := ClearCommBreak(FHandle);
+    {$ELSE}
     status := FpIOCtl(FHandle, TIOCCBRK, pointer(ptrint(0)));
     {$ENDIF}
     SerSync(FHandle);
