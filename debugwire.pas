@@ -1161,7 +1161,7 @@ begin
   data[1] := CMD_SET_IR;         // Set instruction register
   data[2] := hi(instr);
   data[3] := lo(instr);
-  data[4] := CMD_SS_IR;          // Single step instrunction in register
+  data[4] := CMD_SS_IR;          // Single step instruction in register
   SendData(data);
 end;
 
