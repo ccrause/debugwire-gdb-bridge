@@ -82,7 +82,7 @@ type
 
     procedure FReEnableRWW;  // require follow-up FPushSerialBuffer
     procedure FLoadPageBuffer(address: word; values: TBytes);
-    procedure FWritePageBuffer(address: word; values: TBytes);
+    procedure FWritePageBuffer(address: word);
 
     function FReadSPMCSR: byte;
     procedure SetBreakPoint(const addr: word);  // require follow-up FPushSerialBuffer
@@ -938,7 +938,7 @@ begin
     FLoadPageBuffer(startAddress, newPage);
 
     FLog('Write flash page buffer');
-    FWritePageBuffer(startAddress, newPage);
+    FWritePageBuffer(startAddress);
     FReEnableRWW;  // re-enable RWW section
   end;
 end;
@@ -1017,7 +1017,7 @@ begin
   {$ifdef debug} FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
 end;
 
-procedure TDebugWire.FWritePageBuffer(address: word; values: TBytes);
+procedure TDebugWire.FWritePageBuffer(address: word);
 var
   data: TBytes;
 begin
