@@ -109,7 +109,7 @@ type
     procedure SetZreg(const val: word); // require follow-up FPushSerialBuffer
     // Use with caution, may change R29...R31
     procedure ReadRegs(const start, count: byte; out values: TBytes);
-    // Csll ReadRegs, then substitute cached registers in values
+    // Call ReadRegs, then substitute cached registers in values
     procedure safeReadRegs(const start, count: byte; out values: TBytes);
     procedure WriteRegs(const start: byte; const values: TBytes);  // require follow-up FPushSerialBuffer
 
@@ -149,7 +149,6 @@ type
     procedure Step;
 
     procedure DisableDWEN;
-    property PortName: string read FSer.portName;
     property Device: TDeviceInfo read FDevice;
     property TimersDisabled: boolean read FTimersDisabled write FTimersDisabledProc;
     property BaudRate: integer read FReadBaud write FSetBaud;
