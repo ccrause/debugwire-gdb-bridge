@@ -51,6 +51,7 @@ type
     procedure DebugGetMemory(cmd: string);
     procedure DebugSetMemoryHex(cmd: string);
     procedure DebugSetMemoryBinary(cmd: string);
+    procedure DebugSetMemory(addr: dword; data: TBytes);
     {$IFDEF memorymap}
     procedure DebugMemoryMap(cmd: string);
     procedure DecodeBinary(const s: string; out data: TBytes);
@@ -446,8 +447,7 @@ begin
     else
     begin
       FLog('Error: Flash address exceeds device limit');
-      SetLength(data, len);
-      FillByte(data[0], length(data), 0);
+      SetLength(data, 0);
     end;
   end
   else if dword(addr + len) < $810000 then // SRAM
@@ -458,24 +458,25 @@ begin
     else
     begin
       FLog('Error: Memory address exceeds device limit');
-      SetLength(data, len);
-      FillByte(data[0], length(data), 0);
+      SetLength(data, 0);
     end;
   end
   else
   begin
     if dword(addr + len) < ($810000 + FDebugWire.Device.eepromSize) then // must be EEPROM then
-      FLog('Error: EEPROM access not supported yet.')
+      FDebugWire.ReadEEPROM(addr, len, data)
     else
+    begin
       FLog('Error: Address beyond EEPROM.');
-
-    SetLength(data, 0);
-    s := 'E00';
+      SetLength(data, 0);
+    end;
   end;
 
-  if s = '' then
+  if length(data) > 0 then
     for i := 0 to high(data) do
       s := s + hexStr(data[i], 2);
+  else
+    s := 'E00';
 
   gdb_response(s);
 end;
@@ -488,53 +489,34 @@ var
   data: TBytes;
 begin
   delete(cmd, 1, 1);
-  len := gdb_fieldSepPos(cmd);
-  s := '$' + copy(cmd, 1, len-1);
+  i := gdb_fieldSepPos(cmd);
+  s := '$' + copy(cmd, 1, i-1);
   addr := StrToInt(s);
-  delete(cmd, 1, len);
+  delete(cmd, 1, i);
 
-  len := gdb_fieldSepPos(cmd);
-  s := '$' + copy(cmd, 1, len-1);
-  delete(cmd, 1, len);
+  i := gdb_fieldSepPos(cmd);
+  s := '$' + copy(cmd, 1, i-1);
+  len := StrToInt(s);
+  delete(cmd, 1, i);
 
   // now convert data
-  len := length(cmd) div 2;
-  SetLength(data, len);
-  s := '';
-  for i := 0 to len-1 do
+  if len = (length(cmd) div 2) then
   begin
-    s := '$' + cmd[2*i + 1] + cmd[2*i + 2]; // 1 based index
-    data[i] := StrToInt(s);
-  end;
-
-  if (addr + len) < $800000 then // flash memory
-  begin
-    if (addr + len) < FDebugWire.Device.flashSize then
-      FDebugWire.WriteFlash(addr, data)
-    else
+    SetLength(data, len);
+    s := '';
+    for i := 0 to len-1 do
     begin
-      FLog('Error: Flash address exceeds device limit');
-      SetLength(data, 0);
+      s := '$' + cmd[2*i + 1] + cmd[2*i + 2]; // 1 based index
+      data[i] := StrToInt(s);
     end;
-  end
-  else if (addr + len) < $810000 then // SRAM
-  begin
-    addr := addr and $FFFF;
-    if addr < 32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize then
-      FDebugWire.WriteAddress(addr, data)
-    else
-    begin
-      FLog('Error: Memory address exceeds device limit');
-      SetLength(data, 0);
-    end;
-  end
-  else // must be EEPROM then
-  begin
-    FLog('Error: EEPROM access not supported yet.');
-    SetLength(data, 0);
-  end;
 
-  gdb_response('OK');
+    DebugSetMemory(addr, data);
+  end
+  else
+  begin
+    FLog('Decoded length <> expected length of Hex data.');
+    gdb_response('E02');
+  end;
 end;
 
 // X addr,len:XX...
@@ -560,40 +542,56 @@ begin
   DecodeBinary(cmd, data);
   if len = length(data) then // ensure decoding yields the expected length data
   begin
-    if (addr + len) < $800000 then // flash memory
-    begin
-      if (addr + len) < FDebugWire.Device.flashSize then
-        FDebugWire.WriteFlash(addr, data)
-      else
-      begin
-        FLog('Error: Flash address exceeds device limit');
-        SetLength(data, 0);
-      end;
-    end
-    else if (addr + len) < $810000 then // SRAM
-    begin
-      addr := addr and $FFFF;
-      if addr < 32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize then
-        FDebugWire.WriteAddress(addr, data)
-      else
-      begin
-        FLog('Error: Memory address exceeds device limit');
-        SetLength(data, 0);
-      end;
-    end
-    else // must be EEPROM then
-    begin
-      FLog('Error: EEPROM access not supported yet.');
-      SetLength(data, 0);
-    end;
-
-    gdb_response('OK');
+    DebugSetMemory(addr, data);
   end
   else
   begin
     FLog('Decoded length <> expected length of binary data.');
     gdb_response('E02');
   end;
+end;
+
+procedure TGdbRspThread.DebugSetMemory(addr: dword; data: TBytes);
+var
+  len: integer;
+begin
+  len := length(data);
+  if (addr + len) < $800000 then // flash memory
+  begin
+    if (addr + len) < FDebugWire.Device.flashSize then
+      FDebugWire.WriteFlash(addr, data)
+    else
+    begin
+      FLog('Error: Flash address exceeds device limit');
+      len := 0;
+    end;
+  end
+  else if (addr + len) < $810000 then // SRAM
+  begin
+    addr := addr and $FFFF;
+    if addr < 32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize then
+      FDebugWire.WriteAddress(addr, data)
+    else
+    begin
+      FLog('Error: Memory address exceeds device limit');
+      len := 0;
+    end;
+  end
+  else // must be EEPROM then
+  begin
+    if dword(addr + len) < ($810000 + FDebugWire.Device.eepromSize) then // must be EEPROM then
+      FDebugWire.WriteEEPROM(addr, data)
+    else
+    begin
+      FLog('Error: Address beyond EEPROM.');
+      len := 0;
+    end;
+  end;
+
+  if len > 0 then
+    gdb_response('OK')
+  else
+    gdb_response('E02');
 end;
 
 // Supporting  qXfer:memory-map requires support for vFlashErase/vFlashWrite commands
