@@ -1004,14 +1004,17 @@ begin
   SetLength(data, 2);
   while (i < FDevice.FlashPageSize) do
   begin
-    data[0] := values[i];          // R0
-    data[1] := values[i+1];        // R1
+    data[0] := values[i];                // R0
+    data[1] := values[i+1];              // R1
     i := i + 2;
-    WriteRegs(0, data);            // r0 := low byte, r1 := high byte
-    SetPC(FDevice.bootStart);      // Set PC that allows access to all of flash
-    OutInstruction(SPMCSR, 29);    // out SPMCSR,r29 (SPMEN)
-    SendInstruction16(OpCode_SPM); // spm
-    SendInstruction16($9632);      // adiw Z,2  TODO: Really needed, Z is auto inceremented by SPM?
+    WriteRegs(0, data);                  // r0 := low byte, r1 := high byte
+    SetPC(FDevice.bootStart);            // Set PC that allows access to all of flash
+    OutInstruction(SPMCSR, 29);          // out SPMCSR,r29 (SPMEN)
+    SendInstruction16(OpCode_SPM);       // spm
+    if Device.flashSize > 512 then
+      SendInstruction16(OpCode_Adiw_Z_2) // adiw Z,2
+    else
+      SendInstruction16(OpCode_Subi_R30_254);  // subi R30, 254 = add R30, 2
   end;
   FPushSerialBuffer;
   {$ifdef debug} FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
@@ -1335,7 +1338,7 @@ begin
   WriteRegs(29, data);
   //SendData(byte(CMD_SS_SETUP));
   OutInstruction(SPMCSR, 29);
-  SendInstruction16($95C8);      // Load register from Program Memory (from Z) and store result in R0
+  SendInstruction16(OpCode_LPM);      // Load register from Program Memory (from Z) and store result in R0
   ReadRegs(0, 1, data);
   value := data[0];
   WriteRegs(0, R0);   // restore R0
