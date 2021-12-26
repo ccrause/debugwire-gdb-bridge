@@ -621,8 +621,7 @@ end;
 
 procedure TGdbRspThread.DecodeBinary(const s: string; out data: TBytes);
 var
-  i, j, n: integer;
-  repeatData: byte;
+  i, j: integer;
 begin
   SetLength(data, 128);
   // s should start before ':', then scan until ending #
