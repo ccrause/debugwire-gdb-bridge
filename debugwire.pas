@@ -270,6 +270,7 @@ const
 
 function ConCatArray(a1, a2: TBytes): TBytes;
 begin
+  Result := nil;
   SetLength(Result, Length(a1) + Length(a2));
   FillChar(Result[0], Length(Result), 0);
   if length(a1) > 0 then
@@ -1214,6 +1215,7 @@ begin
   cmd[2] := RW_MODE_READ_FLASH;
   cmd[3] := CMD_GO_RW;
 
+  values := nil;
   // Read 64 byte chunks
   while (addr < addrEnd) do
   begin
@@ -1291,7 +1293,7 @@ end;
 
 procedure TDebugWire.SendInstruction16(const instr: word);
 var
-  data: TBytes;
+  data: TBytes = nil;
 begin
   SetLength(data, 5);
   data[0] := CMD_SS_SETUP;       // Single step
@@ -1323,7 +1325,7 @@ end;
 procedure TDebugWire.ReadConfig(const index: byte; out value: byte);
 var
   R0: TBytes;
-  data: TBytes;
+  data: TBytes = nil;
 begin
   // Backup R0
   ReadRegs(0, 1, R0);
