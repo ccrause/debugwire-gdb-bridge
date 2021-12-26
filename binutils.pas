@@ -229,9 +229,15 @@ begin
     begin
       memsection := hi(binArray[i].address);
       if memsection < $80 then
+      begin
+        WriteLn('Programming flash.');
         DW.WriteFlash(binArray[i].address, binArray[i].data)
+      end
       else if memsection = $81 then
-        writeln('EEPROM support not implemented yet')// DW.WriteEEPROM()
+      begin
+        WriteLn('Programming EEPROM.');
+        DW.WriteEEPROM(binArray[i].address, binArray[i].data);
+      end
       else
         writeln('Unrecognized virtual memory prefix: $', HexStr(memsection, 4));
     end;

@@ -40,6 +40,7 @@ procedure runCmdHelp;
 begin
   WriteLn('  b <val>           - Set break point at <val> (each value overwrites previous value). Negative value means no break point.');
   WriteLn('  d <start> <count> - Dump <count> bytes of data starting at <start> address. Addresses start at registers, then I/O registers, then SRAM.');
+  WriteLn('  e <start> <count> - Dump <count> bytes of EEPROM starting at <start> address.');
   WriteLn('  f <start> <count> - Dump <count> bytes of flash starting at <start> address.');
   WriteLn('  h, ?              - Show this help');
   WriteLn('  l <filename.hex>  - Load hex file to controller');
@@ -76,6 +77,22 @@ begin
   //WriteLn;
 end;
 
+function readTwoArguments(out a1, a2: integer): boolean;
+var
+  s, s1, s2: string;
+  ID, err: integer;
+begin
+  system.ReadLn(s);
+  s := trim(s);
+  ID := pos(' ', s);
+  s1 := copy(s, 1, ID-1);
+  s2 := copy(s, ID, length(s));
+  Val(s1, a1, err);
+  if err = 0 then
+    Val(s2, a2, err);
+  Result := err = 0;
+end;
+
 var
   opts: array [0..5] of TOption;
   c: char;
@@ -85,7 +102,7 @@ var
   ID, err, startID, count: integer;
   b: byte;
   isRunning: boolean = false;
-  s, s1, s2: string;
+  s: string;
 
 procedure upload(const filename: string);
 begin
@@ -218,17 +235,9 @@ begin
              end;
         'd': if not isRunning then
              begin
-               // format: d <start> <count>
-               system.ReadLn(s);
-               s := trim(s);
-               ID := pos(' ', s);
-               s1 := copy(s, 1, ID-1);
-               s2 := copy(s, ID, length(s));
-               Val(s1, startID, err);
-               if err = 0 then
-                 Val(s2, count, err);
-               if err = 0 then
+               if readTwoArguments(startID, count) then
                begin
+                 WriteLn('Data dump:');
                  DW.ReadAddress(startID, count, data);  // offset after regs & IOregs
                  WriteLn(FormatDataWithIndex(data, startID, 32));
                end
@@ -238,19 +247,26 @@ begin
                  WriteLn('d $100 $20');
                end;
              end;
+        'e': if not isRunning then
+             begin
+               if readTwoArguments(startID, count) then
+               begin
+                 WriteLn('EEPROM dump:');
+                 DW.ReadEEPROM(startID, count, data);  // offset after regs & IOregs
+                 WriteLn(FormatDataWithIndex(data, startID, 32));
+               end
+               else
+               begin
+                 WriteLn('Invalid format for command <e>. Example:');
+                 WriteLn('e $00 $20');
+               end;
+             end;
         'f': if not isRunning then
              begin
                // format: f <start> <count>
-               system.ReadLn(s);
-               s := trim(s);
-               ID := pos(' ', s);
-               s1 := copy(s, 1, ID-1);
-               s2 := copy(s, ID, length(s));
-               Val(s1, startID, err);
-               if err = 0 then
-                 Val(s2, count, err);
-               if err = 0 then
+               if readTwoArguments(startID, count) then
                begin
+                 WriteLn('Flash dump:');
                  DW.ReadFlash(startID, count, data);
                  WriteLn(FormatDataWithIndex(data, startID, 32));
                end
@@ -309,124 +325,9 @@ begin
 
   if Assigned(DW) then
   begin
+    DW.TimersDisabled := false;
     DW.BP := -1;
     DW.Run;
     DW.Free;
   end;
-
-  exit;
-
-  WriteLn('Running until address $9E.');
-  DW.Reset;
-  DW.PC := 0;
-  DW.BP := $9E;  // MAIN
-  DW.ContinueUntilBreak;
-  WriteLn('Hit break point at: $', hexStr(DW.PC, 2));
-  WriteLn('Hit any key to step through code, space to stop');
-  WriteLn('PC   Instruction code');
-  repeat
-    DW.ReadFlash(DW.PC, 4, data);
-    WriteLn(format('%.4X %.2X %.2X %.2X %.2X', [DW.PC, data[0], data[1], data[2], data[3]]));
-    DW.Step;
-    //c := ReadKey();
-  until (c = ' ');
-
-  //DW.Run;
-  //SetLength(data, 2);
-  //data[0] := 1;
-  //data[1] := 2;
-  //DW.WriteRegs(0, data);
-  //WriteLn('Write to regs..');
-  //
-  //sleep(1000);
-  //DW.ReadRegs(0, 32, data);
-  //
-  //for i := 0 to length(data)-1 do
-  //begin
-  //  Write('R', i:2, ' - $', hexStr(data[i],2));
-  //  if (i mod 4) = 3 then
-  //    Write(#10)
-  //  else
-  //    Write(#9);
-  //end;
-
-  // Skip registers and io registers
-  //DW.ReadFlash(0, 240, data);
-
-//  DW.ReadAddress(96, 8, data);
-  //WriteLn('First 8 bytes from SRAM:');
-
-  //DW.ReadFlash(0, 248, data);
-  //WriteLn('First ', length(data), ' bytes from FLASH:');
-  //for i := 0 to length(data)-1 do
-  //begin
-  //  if (i mod 4) = 0 then
-  //  begin
-  //    Write('$', hexStr(i, 4), ': ', hexStr(data[i],2));
-  //  end
-  //  else if (i mod 4) = 3 then
-  //  begin
-  //    Write(' ', hexStr(data[i],2), #13);
-  //  end
-  //  else
-  //    Write(' ', hexStr(data[i],2));
-  //end;
-
-
-  // Working
-  //addr := $16 + 32;
-  //DW.ReadAddress(addr, 4, data);
-  //WriteLn('ReadAddress:');
-  //for i := 0 to length(data)-1 do
-  //begin
-  //  if (i mod 4) = 0 then
-  //  begin
-  //    Write('$', hexStr(i+addr, 4), ': ', hexStr(data[i],2));
-  //  end
-  //  else if (i mod 4) = 3 then
-  //  begin
-  //    Write(' ', hexStr(data[i],2), #13);
-  //  end
-  //  else
-  //    Write(' ', hexStr(data[i],2));
-  //end;
-
-  //for i := 0 to length(data)-1 do
-  //begin
-  //  Write('$', hexStr(data[i],2));
-  //  if (i mod 4) = 3 then
-  //    Write(#10,i+96:3, ': ')
-  //  else
-  //    Write(' ');
-  //end;
-
-  //DW.ReadAddress(60, 60, data);
-  //WriteLn('ReadAddress:');
-  //for i := 0 to length(data)-1 do
-  //begin
-  //  Write('$', hexStr(data[i],2));
-  //  if (i mod 4) = 3 then
-  //    Write(#10,i:3, ': ')
-  //  else
-  //    Write(' ');
-  //end;
-
-  //DW.SetPC(0);
-  //
-  //DW.ReadFlash(DW.PC, 4, data);
-  //WriteLn('First 4 bytes from flash starting at PC:');
-  //for i := 0 to length(data)-1 do
-  //begin
-  //  Write('$', hexStr(data[i],2));
-  //  if (i mod 4) = 3 then
-  //    Write(#10)
-  //  else
-  //    Write(' ');
-  //end;
-  //Write(#13);
-
-  DW.TimersDisabled := false;
-  DW.Run;
-
-  DW.Free;
 end.

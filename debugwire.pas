@@ -32,10 +32,12 @@ type
     EepromPageSize,
     flashSize,  // In bytes
     FlashPageSize,
-    DWDR,       // DebugWIRE data register, aka MONDR - Monitor data register
-    bootStart,  // Lowest PC value giving boot section access - used to set PC when executing SPM instruction to get write access to flash
-    bootflags,  // Where to find the boot sector control flags, if any (0=not present, 1=ext fuse, 2=high fuse)
-    EECR,       // EEPROM control register index. EEDR and EEARL always follow directly.
+    DWDR,                // DebugWIRE data register, aka MONDR - Monitor data register
+    bootStart,           // Lowest PC value giving boot section access - used to set PC when executing SPM instruction to get write access to flash
+    bootflags,           // Where to find the boot sector control flags, if any (0=not present, 1=ext fuse, 2=high fuse)
+    EECR,                // EEPROM control register index.
+    EEDR,                // EEPROM data register
+    EEARL,               // EEPROM address low
     EEARH: integer;      // EEPROM address high (doesn't exist on all devices)
     NRRW: integer;       // Start of no read while write section. Before this the CPU can read from NRRW section & write to RWW section.  After this the CPU is halted during a flash write operation.
   end;
@@ -119,6 +121,9 @@ type
     procedure ReadFlash(const start, count: word; out values: TBytes);
     procedure WriteFlash(start: word; const values: TBytes);
 
+    procedure ReadEEPROM(const start, count: word; out values: TBytes);
+    procedure WriteEEPROM(start: word; const values: TBytes);
+
     procedure SendInstruction16(const instr: word);
     // Generate op code for OUT instruction and execute
     procedure OutInstruction(const IORegAddr: byte; const sourceReg: byte);
@@ -172,31 +177,32 @@ const
   SPMCSR = $37;        // used for in/out instruction, so don't add $20 offset
   DWDR = $31;          // debug-wire register, used to push data in/out
 
-  DeviceInfo: array[0..19] of TDeviceInfo =
-    ((name: 'ATtiny13';   ID: $9007; ioregSize:  64; sramSize:  64; eepromSize:  64; EepromPageSize: 4; flashSize: 1024; FlashPageSize: 32; DWDR: $2E; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $00; NRRW: 0),
-     (name: 'ATtiny2313'; ID: $910a; ioregSize:  64; sramSize: 128; eepromSize: 128; EepromPageSize: 4; flashSize: 2048; FlashPageSize: 32; DWDR: $1f; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $00; NRRW: 0),
-     (name: 'ATtiny24';   ID: $910B; ioregSize:  64; sramSize: 128; eepromSize: 128; EepromPageSize: 4; flashSize: 2048; FlashPageSize: 32; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
-     (name: 'ATtiny44';   ID: $9207; ioregSize:  64; sramSize: 256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
-     (name: 'ATtiny84';   ID: $930C; ioregSize:  64; sramSize: 512; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
-     (name: 'ATtiny25';   ID: $9108; ioregSize:  64; sramSize: 128; eepromSize: 128; EepromPageSize: 4; flashSize: 2048; FlashPageSize: 32; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
-     (name: 'ATtiny45';   ID: $9206; ioregSize:  64; sramSize: 256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
-     (name: 'ATtiny85';   ID: $930B; ioregSize:  64; sramSize: 512; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0),
-     (name: 'ATmega48A';  ID: $9205; ioregSize: 224; sramSize: 512; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $31; bootStart: $0000; bootflags: 0; EECR: $1F; EEARH: $22; NRRW: 0),
-     (name: 'ATmega48PA'; ID: $920A; ioregSize: 224; sramSize: 512; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $31; bootStart: $0000; bootflags: 0; EECR: $1F; EEARH: $22; NRRW: 0),
+  DeviceInfo: array[0..20] of TDeviceInfo =
+    ((name: 'ATtiny13';   ID: $9007; ioregSize:  64; sramSize:   64; eepromSize:  64; EepromPageSize: 4; flashSize: 1024; FlashPageSize: 32; DWDR: $2E; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $00; NRRW: 0),
+     (name: 'ATtiny2313'; ID: $910a; ioregSize:  64; sramSize:  128; eepromSize: 128; EepromPageSize: 4; flashSize: 2048; FlashPageSize: 32; DWDR: $1f; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $00; NRRW: 0),
+     (name: 'ATtiny24';   ID: $910B; ioregSize:  64; sramSize:  128; eepromSize: 128; EepromPageSize: 4; flashSize: 2048; FlashPageSize: 32; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $1F; NRRW: 0),
+     (name: 'ATtiny44';   ID: $9207; ioregSize:  64; sramSize:  256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $1F; NRRW: 0),
+     (name: 'ATtiny84';   ID: $930C; ioregSize:  64; sramSize:  512; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $1F; NRRW: 0),
+     (name: 'ATtiny25';   ID: $9108; ioregSize:  64; sramSize:  128; eepromSize: 128; EepromPageSize: 4; flashSize: 2048; FlashPageSize: 32; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $1F; NRRW: 0),
+     (name: 'ATtiny45';   ID: $9206; ioregSize:  64; sramSize:  256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $1F; NRRW: 0),
+     (name: 'ATtiny85';   ID: $930B; ioregSize:  64; sramSize:  512; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $22; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $1F; NRRW: 0),
+     (name: 'ATmega48A';  ID: $9205; ioregSize: 224; sramSize:  512; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $31; bootStart: $0000; bootflags: 0; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: 0),
+     (name: 'ATmega48PA'; ID: $920A; ioregSize: 224; sramSize:  512; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 64; DWDR: $31; bootStart: $0000; bootflags: 0; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: 0),
 
-     (name: 'ATmega88A';  ID: $930A; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F80; bootflags: 1; EECR: $1F; EEARH: $22; NRRW: $C00),
-     (name: 'ATmega88PA'; ID: $930F; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F80; bootflags: 1; EECR: $1F; EEARH: $22; NRRW: $C00),
+     (name: 'ATmega88A';  ID: $930A; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F80; bootflags: 1; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $C00),
+     (name: 'ATmega88PA'; ID: $930F; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F80; bootflags: 1; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $C00),
 
-     (name: 'ATmega168A'; ID: $9406; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 16384;FlashPageSize: 128;DWDR: $31; bootStart: $1F80; bootflags: 1; EECR: $1F; EEARH: $22; NRRW: $1C00),
-     (name: 'ATmega168PA';ID: $940B; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize: 16384;FlashPageSize: 128;DWDR: $31; bootStart: $1F80; bootflags: 1; EECR: $1F; EEARH: $22; NRRW: $1C00),
-     (name: 'ATmega328P'; ID: $950F; ioregSize: 224; sramSize: 2048; eepromSize: 1024;EepromPageSize: 4; flashSize: 32768;FlashPageSize: 128;DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEARH: $22; NRRW: $3800),
-     (name: 'ATmega328';  ID: $9514; ioregSize: 224; sramSize: 2048; eepromSize: 1024;EepromPageSize: 4; flashSize: 32768;FlashPageSize: 128;DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEARH: $22; NRRW: $3800),
+     (name: 'ATmega168A'; ID: $9406; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize:16384; FlashPageSize:128; DWDR: $31; bootStart: $1F80; bootflags: 1; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $1C00),
+     (name: 'ATmega168PA';ID: $940B; ioregSize: 224; sramSize: 1024; eepromSize: 512; EepromPageSize: 4; flashSize:16384; FlashPageSize:128; DWDR: $31; bootStart: $1F80; bootflags: 1; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $1C00),
+     (name: 'ATmega328P'; ID: $950F; ioregSize: 224; sramSize: 2048; eepromSize:1024; EepromPageSize: 4; flashSize:32768; FlashPageSize:128; DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $3800),
+     (name: 'ATmega328';  ID: $9514; ioregSize: 224; sramSize: 2048; eepromSize:1024; EepromPageSize: 4; flashSize:32768; FlashPageSize:128; DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $3800),
 
-     (name: 'ATmega8U2';  ID: $9389; ioregSize: 224; sramSize: 512; eepromSize: 512;  EepromPageSize: 4; flashSize: 8192 ;FlashPageSize: 64; DWDR: $31; bootStart: $0F00; bootflags: 2; EECR: $1F; EEARH: $22; NRRW: $0800),
-     (name: 'ATmega16U2'; ID: $9489; ioregSize: 224; sramSize: 512; eepromSize: 512;  EepromPageSize: 4; flashSize: 16384;FlashPageSize: 128;DWDR: $31; bootStart: $1F00; bootflags: 2; EECR: $1F; EEARH: $22; NRRW: $1800),
-     (name: 'ATmega32U2'; ID: $958A; ioregSize: 224; sramSize: 1024;eepromSize: 1024; EepromPageSize: 4; flashSize: 32768;FlashPageSize: 128;DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEARH: $22; NRRW: $3800),
+     (name: 'ATmega8U2';  ID: $9389; ioregSize: 224; sramSize:  512; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 64; DWDR: $31; bootStart: $0F00; bootflags: 2; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $0800),
+     (name: 'ATmega16U2'; ID: $9489; ioregSize: 224; sramSize:  512; eepromSize: 512; EepromPageSize: 4; flashSize:16384; FlashPageSize:128; DWDR: $31; bootStart: $1F00; bootflags: 2; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $1800),
+     (name: 'ATmega32U2'; ID: $958A; ioregSize: 224; sramSize: 1024; eepromSize:1024; EepromPageSize: 4; flashSize:32768; FlashPageSize:128; DWDR: $31; bootStart: $3F00; bootflags: 2; EECR: $1F; EEDR: $20; EEARL: $21; EEARH: $22; NRRW: $3800),
 
-     (name: 'ATtiny441';  ID: $9215; ioregSize: 224; sramSize: 256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 16; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEARH: $1F; NRRW: 0));
+     (name: 'ATtiny441';  ID: $9215; ioregSize: 224; sramSize:  256; eepromSize: 256; EepromPageSize: 4; flashSize: 4096; FlashPageSize: 16; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $00; NRRW: 0),
+     (name: 'ATtiny481';  ID: $9315; ioregSize: 224; sramSize:  512; eepromSize: 512; EepromPageSize: 4; flashSize: 8192; FlashPageSize: 16; DWDR: $27; bootStart: $0000; bootflags: 0; EECR: $1C; EEDR: $1D; EEARL: $1E; EEARH: $1F; NRRW: 0));
 
   // used as pointer for r/w operations
   REG_Z = 30;
@@ -243,8 +249,24 @@ const
   SPMIE = $80;      // SPM Interrupt Enable - for completeness only
 
   // Opcodes for commonly used instructions
-  OpCode_Break = $9598;
-  OpCode_SPM   = $95E8;
+  OpCode_Break        = $9598;
+  OpCode_SPM          = $95E8;
+  OpCode_Subi_R30_255 = $5FEF;
+  OpCode_Adiw_Z_1     = $9631;
+  OpCode_Subi_R30_254 = $5FEE;
+  OpCode_Adiw_Z_2     = $9632;
+  OpCode_LPM          = $95C8;   // Load address in Z from program space, store in R0
+
+  // EEPROM control register bit settings
+  EEMP0 = 1 shl 4;
+  EEMPROM_ERASE_WRITE_MODE     = 0 shl EEMP0;
+  EEMPROM_ERASE_ONLY_MODE      = 1 shl EEMP0;
+  EEMPROM_WRITE_ONLY_MODE      = 2 shl EEMP0;
+  EEPROM_MASTER_PROGRAM_ENABLE = 1 shl 2;
+  EEPROM_PROGRAM_ENABLE        = 1 shl 1;
+  EEPROM_READ_ENABLE           = 1 shl 0;
+
+  // Config options
 
 function ConCatArray(a1, a2: TBytes): TBytes;
 begin
@@ -1118,6 +1140,62 @@ begin
   end;
 end;
 
+procedure TDebugWire.ReadEEPROM(const start, count: word; out values: TBytes);
+var
+  R0, data, status: TBytes;
+  i, timeout: integer;
+begin
+  // Backup R0
+  ReadRegs(0, 1, R0);
+
+  // Wait for previous EEPROM write to finish
+  timeout := 10;
+  repeat
+    // Read EECR and check that EEPE is clear
+    InInstruction(0, Device.EECR);
+    OutInstruction(Device.DWDR, 0);
+    ReadData(1, status);
+    dec(timeout);
+  until ((status[0] and EEPROM_PROGRAM_ENABLE) = 0) or (timeout = 0);
+
+  // Configure R29, R30, R31
+  SetLength(data, 3);
+  data[0] := EEPROM_READ_ENABLE;
+  data[1] := lo(start);
+  data[2] := hi(start);
+  WriteRegs(29, data);
+
+  i := 0;
+  SetLength(data, 1);
+  SetLength(values, count);
+  repeat
+    // Configure EEPROM registers to read address from R30:R31.
+    // EEPROM_READ_ENABLE already set in R29, above.
+    if Device.EEARH > 0 then
+      OutInstruction(Device.EEARH, 31);
+
+    OutInstruction(Device.EEARL, 30);
+    OutInstruction(Device.EECR, 29);
+    InInstruction(0, Device.EEDR);
+    OutInstruction(Device.DWDR, 0);
+
+    ReadData(1, data);
+    values[i] := data[0];
+    inc(i);
+    // Increment Z register to read next byte in EEPROM
+    if i < count then
+    begin
+      if Device.EEARH > 0 then
+        SendInstruction16(OpCode_Adiw_Z_1)
+      else
+        SendInstruction16(OpCode_Subi_R30_255);   // subi r30, -1
+    end;
+  until i = count;
+
+  // restore R0
+  WriteRegs(0, R0);
+end;
+
 // Byte address based
 procedure TDebugWire.ReadFlash(const start, count: word; out values: TBytes);
 var
@@ -1150,6 +1228,65 @@ begin
     addr := addr + len;
   end;
   {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%} + ' - end'); {$endif}
+end;
+
+procedure TDebugWire.WriteEEPROM(start: word; const values: TBytes);
+var
+  R0, data, status: TBytes;
+  i, count, timeout: integer;
+begin
+  // Backup R0
+  ReadRegs(0, 1, R0);
+
+  // Configure R28, R29, R30, R31
+  SetLength(data, 4);
+  data[0] := EEPROM_MASTER_PROGRAM_ENABLE;
+  data[1] := EEPROM_PROGRAM_ENABLE;          // EEPM1:EEPM0 = 0, Erase & write mode
+  data[2] := lo(start);
+  data[3] := hi(start);
+  WriteRegs(28, data);
+
+  i := 0;
+  count := length(values);
+  repeat
+    // Wait for previous EEPROM write to finish
+    timeout := 10;
+    repeat
+      // Read EECR and check that EEPE is clear
+      InInstruction(0, Device.EECR);
+      OutInstruction(Device.DWDR, 0);
+      ReadData(1, status);
+      dec(timeout);
+    until ((status[0] and EEPROM_PROGRAM_ENABLE) = 0) or (timeout = 0);
+
+    // Configure EEPROM registers to read address from R30:R31.
+    // EEPROM_READ_ENABLE already set in R29, above.
+    if Device.EEARH > 0 then
+      OutInstruction(Device.EEARH, 31);
+    OutInstruction(Device.EEARL, 30);
+
+    // Load byte into EEDR register via DWDR
+    InInstruction(0, Device.DWDR);
+    SendData(values[i]);
+    OutInstruction(Device.EEDR, 0);
+
+    // Write EEMWE / EEWE sequence to enable and write byte to EEPROM
+    OutInstruction(Device.EECR, 28);
+    OutInstruction(Device.EECR, 29);
+
+    inc(i);
+    // Increment Z register to write next byte in EEPROM
+    if i < count then
+    begin
+      if Device.EEARH > 0 then
+        SendInstruction16(OpCode_Adiw_Z_1)
+      else
+        SendInstruction16(OpCode_Subi_R30_255);   // subi r30, -1
+    end;
+  until i = count;
+
+  // restore R0
+  WriteRegs(0, R0);
 end;
 
 procedure TDebugWire.SendInstruction16(const instr: word);
