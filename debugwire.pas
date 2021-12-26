@@ -868,7 +868,7 @@ begin
   i := 0;
   while startAddress < limit do
   begin
-    if (startAddress < 28) or ((startAddress > 31) and (startAddress <> FDevice.DWDR + $20)) then
+    if (startAddress < FRegCacheStart) or ((startAddress > FRegCacheStart + FRegCacheLength) and (startAddress <> FDevice.DWDR + $20)) then
     begin
       SetPC(1);
       SendData(byte(CMD_GO_RW));
