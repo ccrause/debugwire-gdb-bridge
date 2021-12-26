@@ -307,6 +307,7 @@ begin
         'x': if isRunning then
              begin
                DW.BreakCmd;
+               DW.Reconnect;
                printDebugState;
                isRunning := false;
              end;
