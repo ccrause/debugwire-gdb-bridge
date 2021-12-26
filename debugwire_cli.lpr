@@ -120,7 +120,7 @@ begin
 
   if FileExists(filename) then
   begin
-    programHexFile(s, DW);
+    programHexFile(filename, DW);
     writeln('Done uploading file: ', s);
   end;
   Halt(0);
