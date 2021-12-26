@@ -8,7 +8,7 @@ uses
 
 type
 
-  {$DEFINE memorymap}
+  { $DEFINE memorymap}
 
   {TGdbRspThread }
   TDebugState = (dsPaused, dsRunning);
@@ -54,12 +54,12 @@ type
     procedure DebugSetMemory(addr: dword; data: TBytes);
     {$IFDEF memorymap}
     procedure DebugMemoryMap(cmd: string);
+    {$ENDIF memorymap}
     procedure DecodeBinary(const s: string; out data: TBytes);
     procedure EncodeBinary(const data: TBytes; out s: string);
     procedure DebugFlashErase(cmd: string);
     procedure DebugFlashWrite(cmd: string);
     procedure DebugFlashWriteDone;
-    {$ENDIF memorymap}
     procedure DebugStopReason(signal: integer; stopReason: TDebugStopReason);
   public
     constructor Create(AClientStream: TSocketStream; dw: TDebugWire; logger: TLog);
@@ -594,9 +594,7 @@ begin
     gdb_response('E02');
 end;
 
-// Supporting  qXfer:memory-map requires support for vFlashErase/vFlashWrite commands
-// to write to flash
-// Support for this disabled at the moment
+// Support for qXfer:memory-map
 {$IFDEF memorymap}
 procedure TGdbRspThread.DebugMemoryMap(cmd: string);
 var
@@ -611,7 +609,7 @@ begin
   delete(cmd, 1, i);
   len := StrToInt('$' + cmd);
 
-  // If requested length < memory map size, perpend "m", else "l"
+  // If requested length < memory map size, prepend "m", else "l"
   if (offset + len) < length(FMemoryMap) then
     s := 'm' + copy(FMemoryMap, 1+offset, len)
   else
@@ -619,6 +617,7 @@ begin
 
   gdb_response(s);
 end;
+{$ENDIF memorymap}
 
 procedure TGdbRspThread.DecodeBinary(const s: string; out data: TBytes);
 var
@@ -769,8 +768,6 @@ begin
     gdb_response('E00');
 end;
 
-{$ENDIF memorymap}
-
 procedure TGdbRspThread.DebugStopReason(signal: integer;
   stopReason: TDebugStopReason);
 var
@@ -817,9 +814,12 @@ begin
   FDebugState := dsPaused;
   FLogger := logger;
   FBPManager := TBPManager.Create(FDebugWire, logger);
+
+  {$IFDEF memorymap}
   if dw.Device.ID > 0 then
     FMemoryMap := format('<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
                   [32 + FDebugWire.Device.ioregSize + FDebugWire.Device.sramSize, FDebugWire.Device.flashSize]);
+  {$ENDIF memorymap}
 
   //FMemoryMap := '<?xml version="1.0"?> '+ LineEnding +
   //     '<!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" "http://sourceware.org/gdb/gdb-memory-map.dtd"> '+ LineEnding +
@@ -978,7 +978,7 @@ begin
                    DebugStep;
                    DebugStopReason(5, srSWBP);
                  end;
-            {$IFDEF memorymap}
+
             'v': begin
                    if pos('FlashErase', cmd) > 0 then
                    begin
@@ -995,7 +995,6 @@ begin
                    else
                      gdb_response('');
                  end;
-            {$ENDIF}
 
             'X': begin
                    DebugSetMemoryBinary(cmd);
