@@ -1011,7 +1011,7 @@ begin
     SetPC(FDevice.bootStart);            // Set PC that allows access to all of flash
     OutInstruction(SPMCSR, 29);          // out SPMCSR,r29 (SPMEN)
     SendInstruction16(OpCode_SPM);       // spm
-    if Device.flashSize > 512 then
+    if Device.FlashPageSize > 256 then
       SendInstruction16(OpCode_Adiw_Z_2) // adiw Z,2
     else
       SendInstruction16(OpCode_Subi_R30_254);  // subi R30, 254 = add R30, 2
