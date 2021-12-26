@@ -30,8 +30,8 @@ type
     sramSize,
     eepromSize,
     EepromPageSize,
-    flashSize,  // In bytes
-    FlashPageSize,
+    flashSize,           // In bytes
+    FlashPageSize,       // In bytes
     DWDR,                // DebugWIRE data register, aka MONDR - Monitor data register
     bootStart,           // Lowest PC value giving boot section access - used to set PC when executing SPM instruction to get write access to flash
     bootflags,           // Where to find the boot sector control flags, if any (0=not present, 1=ext fuse, 2=high fuse)
@@ -220,7 +220,7 @@ const
   CMD_RW_MODE = $C2;  // set byte size to instruction register
   CMD_SET_PC = $D0;   // set word size program counter
   CMD_SET_BP = $D1;   // set word size break point
-  CMD_SET_IR= $D2;    // set word size to instruction register
+  CMD_SET_IR= $D2;    // set word size instruction to instruction register, execute with CMD_SS_IR
   CMD_READ_PC = $F0;  // read word size program counter
   CMD_READ_SIG = $F3; // read word size signature
 
@@ -1063,7 +1063,7 @@ end;
 
 function TDebugWire.FReadSPMCSR: byte;
 var
-  val: TBytes;
+  val: TBytes = nil;
 begin
   {$ifdef debug} FPushSerialBuffer; FLogFile({$I %CURRENTROUTINE%}); {$endif}
   SetLength(val, 1);
