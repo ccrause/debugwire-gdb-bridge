@@ -6,7 +6,7 @@ uses
   binutils, rsp, genutils, getopts;
 
 const
-  DefaultTcpPort = 2345;
+  DefaultTcpPort = 1234;
 
 var
   rspserver: TGdbRspServer;
@@ -33,7 +33,7 @@ begin
   WriteLn('Connect to serial port using baud rate <bd>.  If not specified, the debugWIRE baud rate will be scanned automatically.');
   WriteLn('');
   WriteLn('-T <tp>, --tcpport=<tp>');
-  WriteLn('Set GDB server to listen on TCP port <tp>.  If not specified, TCP port defaults to 2345.');
+  WriteLn('Set GDB server to listen on TCP port <tp>.  If not specified, TCP port defaults to 1234.');
   WriteLn('');
   WriteLn('-I, -i, --ispenable');
   WriteLn('Temporarily disable DWEN fuse to enable ISP functionality.');
@@ -130,7 +130,7 @@ begin
   else
   begin
     if TcpPort = 0 then
-      TcpPort := 2345;
+      TcpPort := DefaultTcpPort;
 
     // My defaults...
     if serialPort = '' then
