@@ -474,7 +474,7 @@ begin
 
   if length(data) > 0 then
     for i := 0 to high(data) do
-      s := s + hexStr(data[i], 2);
+      s := s + hexStr(data[i], 2)
   else
     s := 'E00';
 
