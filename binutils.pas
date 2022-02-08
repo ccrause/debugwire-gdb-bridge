@@ -230,12 +230,12 @@ begin
       memsection := hi(binArray[i].address);
       if memsection < $80 then
       begin
-        WriteLn('Programming flash.');
+        WriteLn('Programming flash starting at $', IntToHex(word(binArray[i].address), 4), ', writing ', length(binArray[i].data), ' bytes.');
         DW.WriteFlash(binArray[i].address, binArray[i].data)
       end
       else if memsection = $81 then
       begin
-        WriteLn('Programming EEPROM.');
+        WriteLn('Programming EEPROM starting at $', IntToHex(word(binArray[i].address), 4), ', writing ', length(binArray[i].data), ' bytes.');
         DW.WriteEEPROM(binArray[i].address, binArray[i].data);
       end
       else
