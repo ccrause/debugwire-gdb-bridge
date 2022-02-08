@@ -122,6 +122,9 @@ begin
   begin
     programHexFile(filename, DW);
     writeln('Done uploading file: ', s);
+    writeln('Reset & run controller.');
+    DW.Reset;
+    DW.Run;
   end;
   Halt(0);
 end;
