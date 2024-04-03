@@ -1123,6 +1123,9 @@ end;
 constructor TGdbRspServer.Create(APort: Word);
 begin
   inherited Create(APort);
+  { On posix, ReuseAddress must be set to ensure socket can be re-opened
+    without waiting for a time-out. }
+  ReuseAddress := true;
   OnConnect := @FAcceptConnection;
   OnConnectQuery := @FQueryConnect;
   FActiveThreadRunning := false;
