@@ -42,7 +42,7 @@ type
     procedure Break;
     function Read(var Buffer; Count: LongInt): integer;
     function ReadTimeout(var Buffer: array of byte; count, mSec: LongInt): integer;
-    function Write(var Buffer; Count: LongInt): LongInt;
+    function Write(const Buffer; Count: LongInt): LongInt;
 
     procedure Flush;
     procedure FlushInput;
@@ -260,7 +260,7 @@ begin
   result := SerReadTimeout(FHandle, Buffer[0], count, mSec);
 end;
 
-function TSerialObj.Write(var Buffer; Count: LongInt): LongInt;
+function TSerialObj.Write(const Buffer; Count: LongInt): LongInt;
 begin
   result := SerWrite(FHandle, Buffer, Count);
 end;
