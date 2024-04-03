@@ -853,12 +853,13 @@ var
 begin
   Done := false;
   msg := '';
+  count := 0;
 
   repeat
     try
       if FTCPDataAvailable then
       begin
-        count := FClientStream.Read(buf[0], length(buf));
+        count := count + FClientStream.Read(buf[0], length(buf));
         // if socket signaled and no data available -> connection closed
         if count = 0 then
         begin
@@ -905,6 +906,22 @@ begin
 
         i := pos('$', msg);  // start of command
         j := pos('#', msg);  // end of command
+
+        // Check if complete message received
+        if (i > 0) and (j = 0) then
+          while j = 0 do
+          begin
+            idstart := FClientStream.Read(buf[0], length(buf));
+            if idstart > 0 then
+            begin
+              SetLength(msg, count + idstart);
+              Move(buf[0], msg[count + 1], idstart);
+              count := count + idstart;
+              j := pos('#', msg);  // end of command
+            end
+            else
+              break;
+          end;
 
         // This check also skip ack / nack replies (+/-)
         if (i > 0) and ((count - 2) >= j) then  // start & terminator + 2 byte CRC received
