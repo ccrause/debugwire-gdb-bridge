@@ -36,6 +36,7 @@ type
     FlashPagesWithBPs: array of TFlashPageBPs; // BPs grouped per flash page
     FDebugWire: TDebugWire;
     FLogger: TLog;
+    FLoggingEnabled: boolean;
     FPageMask: dword;
     FPageOffsetMask: dword;
     FlashStart: dword;
@@ -57,6 +58,7 @@ type
     procedure FinalizeBPs;
     procedure PrintBPs;
     function findSWBPFromAddress(address: word): PBP;
+    property LoggingEnabled: boolean read FLoggingEnabled write FLoggingEnabled;
   end;
 
 implementation
@@ -65,7 +67,7 @@ implementation
 
 procedure TBPManager.FLog(s: string);
 begin
-  if Assigned(FLogger) then
+  if FLoggingEnabled and Assigned(FLogger) then
     FLogger(s);
 end;
 

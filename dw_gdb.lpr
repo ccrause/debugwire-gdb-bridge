@@ -10,17 +10,18 @@ const
 
 var
   rspserver: TGdbRspServer;
-  opts: array [0..5] of TOption;
+  opts: array [0..6] of TOption;
   c: char;
   TcpPort: word;
   ID, baud: integer;
   serialPort: string;
-  DisableDWENfuse: boolean;
+  DisableDWENfuse: boolean = false;
+  verbose: boolean = false;
 
 procedure printHelp;
 begin
   WriteLn('Usage:');
-  WriteLn('dw_gdb [-S <sp>] [-B <bd>] [-T <tp>] [-H]');
+  WriteLn('dw_gdb [-S <sp>] [-B <bd>] [-T <tp>] [-V] [-H]');
   WriteLn('');
   WriteLn('-S <sp>, --serialport=<sp>');
   {$ifdef Windows}
@@ -37,6 +38,9 @@ begin
   WriteLn('');
   WriteLn('-I, -i, --ispenable');
   WriteLn('Temporarily disable DWEN fuse to enable ISP functionality.');
+  WriteLn('');
+  WriteLn('-V, -v, --verbose');
+  WriteLn('Enable verbose debug output.');
   WriteLn('');
   WriteLn('-H, -h, -?, --help');
   WriteLn('Display this help');
@@ -100,8 +104,13 @@ begin
 
   opts[5].Flag := nil;
   opts[5].Has_arg := 0;
-  opts[5].Name := '';
-  opts[5].Value := #0;
+  opts[5].Name := 'verbose';
+  opts[5].Value := 'V';
+
+  opts[6].Flag := nil;
+  opts[6].Has_arg := 0;
+  opts[6].Name := '';
+  opts[6].Value := #0;
 
   serialPort := '';
   baud := 0;
@@ -109,7 +118,7 @@ begin
   DisableDWENfuse := false;
 
   repeat
-    c := GetLongOpts('S:s:B:b:T:t:Hh?Ii', @opts[0], ID);
+    c := GetLongOpts('S:s:B:b:T:t:Hh?IiVv', @opts[0], ID);
     case c of
       'S','s': serialPort := OptArg;
       'B', 'b': baud := StrToInt(OptArg);
@@ -120,6 +129,7 @@ begin
           Halt;
         end;
       'I', 'i':  DisableDWENfuse := true;
+      'V', 'v':  verbose := true;
     end;
   until c = EndOfOptions;
 
@@ -146,6 +156,9 @@ begin
       else // auto scan baud rate
         rspserver := TGdbRspServer.Create(TcpPort, serialPort);
     end;
+
+    if Assigned(rspserver) then
+      rspserver.VerboseLogging := verbose;
 
     // Keep server running, FQueryConnect will reject connections while TGdbRspThread is running with current connection
     // Server will close down once MaxConnections is reached.  Could then wait on Connection thread to finish?

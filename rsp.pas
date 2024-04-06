@@ -31,8 +31,9 @@ type
     FLastCmd: string;  // in case a resend is required;
     FFlashWriteBuffer: array of TFlashWriteBuffer;
     FMemoryMap: string;
+    FLoggingEnabled: boolean;
     procedure FLog(s: string);
-
+    procedure FLoggingEnabledProc(val: boolean);
     function gdb_fieldSepPos(cmd: string): integer;
     procedure gdb_response(s: string);
     procedure gdb_response(data: TBytes);
@@ -64,7 +65,7 @@ type
   public
     constructor Create(AClientStream: TSocketStream; dw: TDebugWire; logger: TLog);
     procedure Execute; override;
-    property OnLog: TLog read FLogger write FLogger;
+    property LoggingEnabled: boolean read FLoggingEnabled write FLoggingEnabledProc;
   end;
 
   { TGdbRspServer }
@@ -76,6 +77,7 @@ type
     FDebugWire: TDebugWire;
     FSerialPort: string;
     FBaud: integer;
+    FVerboseLogging: boolean;
 
     procedure FLog(s: string);
     procedure FActiveThreadOnTerminate(Sender: TObject);
@@ -86,6 +88,7 @@ type
     constructor Create(APort: Word; serialPort: string);
     constructor Create(APort: Word; serialPort: string; baud: integer);
     procedure SerialConnect;
+    property VerboseLogging: boolean read FVerboseLogging write FVerboseLogging;
   end;
 
 implementation
@@ -112,8 +115,15 @@ end;
 
 procedure TGdbRspThread.FLog(s: string);
 begin
-  if Assigned(FLogger) then
+  if FLoggingEnabled and Assigned(FLogger) then
     Flogger(s);
+end;
+
+procedure TGdbRspThread.FLoggingEnabledProc(val: boolean);
+begin
+  FLoggingEnabled := val;
+  FBPManager.LoggingEnabled := val;
+  FDebugWire.LoggingEnabled := val;
 end;
 
 function TGdbRspThread.gdb_fieldSepPos(cmd: string): integer;
@@ -812,7 +822,10 @@ begin
   FDebugWire := dw;
   FDebugState := dsPaused;
   FLogger := logger;
+  FLoggingEnabled := Assigned(logger);
+  dw.LoggingEnabled := FLoggingEnabled;
   FBPManager := TBPManager.Create(FDebugWire, logger);
+  FBPManager.LoggingEnabled := FLoggingEnabled;
 
   {$IFDEF memorymap}
   if dw.Device.ID > 0 then
@@ -1097,6 +1110,7 @@ begin
     FLog('Incoming connection from ' + AddrToString(Data.RemoteAddress));
     FActiveThread := TGdbRspThread.Create(Data, FDebugWire, @self.FLog);
     FActiveThread.OnTerminate := @FActiveThreadOnTerminate;
+    FActiveThread.LoggingEnabled := VerboseLogging;
     FActiveThreadRunning := true;
   end
   else

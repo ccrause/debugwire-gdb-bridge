@@ -60,6 +60,8 @@ type
     FOutBuffer: array[0..255] of byte;
     FOutBufCount: integer;
 
+    FLoggingEnabled: boolean;
+
     procedure FLogFile(data: TBytes; count: integer); overload;
     procedure FLogFile(s: string);  overload;
     procedure FLog(s: string);
@@ -155,6 +157,7 @@ type
     property PC: word read FPC write FPC;
     property BP: integer read FBP write FBP;
     property OnLog: TLog read FLogger write FLogger;
+    property LoggingEnabled: boolean read FLoggingEnabled write FLoggingEnabled;
 
     // for debugging only
     property Serial: TSerialObj read FSer;
@@ -320,7 +323,7 @@ end;
 
 procedure TDebugWire.FLog(s: string);
 begin
-  if Assigned(FLogger) then
+  if FLoggingEnabled and Assigned(FLogger) then
     Flogger(s);
 end;
 
@@ -393,6 +396,7 @@ begin
   FSer := TSerialObj.Create;
   FTimersDisabled := false;
   FTimersMask := 0;
+  FLoggingEnabled := false;
   FillChar(FDevice, sizeof(FDevice), 0);
   FPC := 0;
   FBP := -1;
