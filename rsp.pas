@@ -30,7 +30,9 @@ type
     FBPManager: TBPManager;
     FLastCmd: string;  // in case a resend is required;
     FFlashWriteBuffer: array of TFlashWriteBuffer;
+    {$ifdef memorymap}
     FMemoryMap: string;
+    {$endif}
     FLoggingEnabled: boolean;
     procedure FLog(s: string);
     procedure FLoggingEnabledProc(val: boolean);
@@ -88,9 +90,7 @@ type
     procedure FQueryConnect(Sender: TObject; ASocket: LongInt; var doaccept: Boolean);
   public
     constructor Create(APort: Word);
-    constructor Create(APort: Word; serialPort: string);
-    constructor Create(APort: Word; serialPort: string; baud: integer);
-    procedure SerialConnect;
+    function SerialConnect(serialPort: string; baud: integer): boolean; overload;
     property VerboseLogging: boolean read FVerboseLogging write FVerboseLogging;
   end;
 
@@ -1243,46 +1243,32 @@ begin
 
   FDebugWire := TDebugWire.Create;
   FDebugWire.OnLog := @FLog;
-
-  SerialConnect;
 end;
 
-constructor TGdbRspServer.Create(APort: Word; serialPort: string);
+function TGdbRspServer.SerialConnect(serialPort: string; baud: integer): boolean;
 begin
-  FSerialPort := serialPort;
-  FBaud := 0;
-  Create(APort);
-end;
-
-constructor TGdbRspServer.Create(APort: Word; serialPort: string; baud: integer);
-begin
-  FSerialPort := serialPort;
-  FBaud := baud;
-  Create(APort);
-end;
-
-procedure TGdbRspServer.SerialConnect;
-var
-  targetOK: boolean;
-begin
-  targetOK := false;
-  if (FSerialPort <> '') then
+  Result := (serialPort <> '');
+  if Result then
   begin
-    if FDebugWire.Connect(FSerialPort, FBaud) then
+    FDebugWire.LoggingEnabled := VerboseLogging;
+    Result := FDebugWire.Connect(serialPort, baud);
+    if Result then
     begin
+      FSerialPort := serialPort;
+      FBaud := baud;
       FDebugWire.BreakCmd;
-      targetOK := FDebugWire.IdentifyTarget;
+      Result := FDebugWire.IdentifyTarget;
     end;
   end;
 
-  if targetOK then
+  if Result then
   begin
     FDebugWire.Reset;   // reset MCU
     FDebugWire.PC := 0;
   end
   else
   begin
-    FLog('Target not started...');
+    FLog('Error connecting to debugwire target on: ' + serialPort);
     MaxConnections := 0;  // effectively stop listening
   end;
 end;

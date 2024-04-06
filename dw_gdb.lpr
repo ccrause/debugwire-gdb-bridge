@@ -12,8 +12,9 @@ var
   rspserver: TGdbRspServer;
   opts: array [0..6] of TOption;
   c: char;
-  TcpPort: word;
-  ID, baud: integer;
+  TcpPort: word = DefaultTcpPort;
+  ID: integer;
+  baud: integer = 0;
   serialPort: string;
   DisableDWENfuse: boolean = false;
   verbose: boolean = false;
@@ -54,7 +55,7 @@ begin
   begin
     dw := TDebugWire.Create;
     try
-      if dw.Connect(serialPort,baud) then
+      if dw.Connect(serialPort, baud) then
       begin
         dw.BreakCmd;
         if dw.IdentifyTarget then
@@ -113,9 +114,6 @@ begin
   opts[6].Value := #0;
 
   serialPort := '';
-  baud := 0;
-  TcpPort := DefaultTcpPort;
-  DisableDWENfuse := false;
 
   repeat
     c := GetLongOpts('S:s:B:b:T:t:Hh?IiVv', @opts[0], ID);
@@ -139,30 +137,11 @@ begin
   end
   else
   begin
-    if TcpPort = 0 then
-      TcpPort := DefaultTcpPort;
+    rspserver := TGdbRspServer.Create(TcpPort);
+    rspserver.VerboseLogging := verbose;
 
-    // My defaults...
-    if serialPort = '' then
-      {$ifdef WINDOWS}
-      rspserver := TGdbRspServer.Create(TcpPort, '\COM3', 62500)
-      {$else}
-      rspserver := TGdbRspServer.Create(TcpPort, '/dev/ttyUSB0', 62500)
-      {$endif}
-    else
-    begin
-      if baud > 0 then
-        rspserver := TGdbRspServer.Create(TcpPort, serialPort, baud)
-      else // auto scan baud rate
-        rspserver := TGdbRspServer.Create(TcpPort, serialPort);
-    end;
-
-    if Assigned(rspserver) then
-      rspserver.VerboseLogging := verbose;
-
-    // Keep server running, FQueryConnect will reject connections while TGdbRspThread is running with current connection
-    // Server will close down once MaxConnections is reached.  Could then wait on Connection thread to finish?
-    if rspserver.MaxConnections <> 0 then
+    // Check if a debugwire connection is available over serial
+    if rspserver.SerialConnect(serialPort, baud) then
     begin
       WriteLn('Waiting for TCP connection on port ' + IntToStr(rspserver.Port));
       rspserver.StartAccepting;

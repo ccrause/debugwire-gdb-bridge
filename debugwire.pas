@@ -412,21 +412,16 @@ end;
 function TDebugWire.Connect(portName: string; baud: integer): boolean;
 begin
   if baud > 0 then
-  begin
-    result := FSer.OpenPort(portName, baud);
-    //if result then
-    //  result := BreakResponse = $55;
-  end
+    Result := FSer.OpenPort(portName, baud)
   else
-    result := Connect(portName);
+    Result := Connect(portName);
 end;
 
 function TDebugWire.Connect(portName: string): boolean;
 begin
-  if Connect(portName, 200000) then
-  begin
-    result := ScanTargetBaud;
-  end;
+  Result := Connect(portName, 200000);
+  if Result then
+    Result := ScanTargetBaud;
 end;
 
 function TDebugWire.ScanTargetBaud: boolean;
