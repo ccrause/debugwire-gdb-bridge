@@ -37,6 +37,7 @@ type
     function gdb_fieldSepPos(cmd: string): integer;
     procedure gdb_response(s: string);
     procedure gdb_response(data: TBytes);
+    procedure gdb_response_hexencoded(s: string);
     procedure gdb_qSupported(cmd: string);
 
     function FTCPDataAvailable: boolean;
@@ -62,6 +63,8 @@ type
     procedure DebugFlashWrite(cmd: string);
     procedure DebugFlashWriteDone;
     procedure DebugStopReason(signal: integer; stopReason: TDebugStopReason);
+    function HexDecode(hexcode: string): string;
+    procedure HandleRcmd(req: string);
   public
     constructor Create(AClientStream: TSocketStream; dw: TDebugWire; logger: TLog);
     procedure Execute; override;
@@ -174,6 +177,20 @@ begin
     resp := resp + hexStr(data[i], 2);
 
   gdb_response(resp);
+end;
+
+procedure TGdbRspThread.gdb_response_hexencoded(s: string);
+var
+  enc: string;
+  i, v: integer;
+begin
+  enc := '';
+  for i := 1 to length(s) do
+  begin
+    v := ord(s[i]);
+    enc := enc + HexStr(v, 2);
+  end;
+  gdb_response(enc);
 end;
 
 procedure TGdbRspThread.gdb_qSupported(cmd: string);
@@ -811,6 +828,86 @@ begin
   gdb_response(s);
 end;
 
+function TGdbRspThread.HexDecode(hexcode: string): string;
+var
+  i: integer;
+  s: string;
+begin
+  SetLength(Result, length(hexCode) div 2);
+  for i := 1 to length(Result) do
+  begin
+    s := '$' + hexCode[2*i-1] + hexCode[2*i];
+    result[i] := char(StrToInt(s));
+  end;
+end;
+
+procedure TGdbRspThread.HandleRcmd(req: string);
+var
+  resp: string;
+  cmds: TStringList;
+begin
+  if length(req) = 0 then exit;
+
+  cmds := TStringList.Create;
+  try
+    cmds.Delimiter := ' ';
+    cmds.DelimitedText := lowercase(HexDecode(req));
+    FLog('Rcmd received: ' + cmds.DelimitedText);
+
+    resp := 'OK';  // Only override on actual error or alternative output
+    case cmds[0] of
+      'help':
+        begin
+          resp := '  help - List of commands supported.'+LineEnding +
+                  '  set verbose [1 or 0] - Enable or disable verbose messages'+LineEnding +
+                  '  set timers-disabled [1 or 0] - Disable or enable timers'+LineEnding;
+        end;
+      'set':  // Options: verbose, timers-disabled
+        begin
+          if cmds.Count = 3 then
+          begin
+            case cmds[1] of
+              'verbose':
+                begin
+                  if cmds[2] = '1' then
+                    Self.LoggingEnabled := true
+                  else if cmds[2] = '0' then
+                    Self.LoggingEnabled := false
+                  else
+                    resp := 'E00';
+                end;
+
+              'timers-disabled':
+                begin
+                  if cmds[2] = '1' then
+                    FDebugWire.TimersDisabled := true
+                  else if cmds[2] = '0' then
+                    FDebugWire.TimersDisabled := false
+                  else
+                    resp := 'E00';
+                end;
+              else
+                resp := 'E00';
+            end
+          end
+          else
+            resp := 'E00';
+        end;
+      else
+        resp := 'E00';
+    end;
+  finally
+    cmds.Free;
+  end;
+
+  // Monitor responses should be encoded,
+  // but normal protocol responses (OK, Enn) should be returned plain text
+  if (resp = '') or (resp = 'OK') or ((length(resp) = 3) and (resp[1] = 'E')) then
+    gdb_response(resp)
+  else
+    gdb_response_hexencoded(resp);
+end;
+
 { TGdbRspThread }
 
 constructor TGdbRspThread.Create(AClientStream: TSocketStream; dw: TDebugWire;
@@ -998,6 +1095,14 @@ begin
                  else if pos('Xfer:memory-map:read', cmd) > 0 then
                    DebugMemoryMap(cmd)
             {$ENDIF memorymap}
+                 else if pos('Rcmd', cmd) > 0 then
+                 begin
+                   delete(cmd, 1, pos(',', cmd));
+                   if length(cmd) > 0 then
+                     HandleRcmd(cmd)
+                   else
+                     gdb_response('');
+                 end
                  else
                    gdb_response('');
 
