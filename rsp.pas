@@ -97,22 +97,14 @@ type
 implementation
 
 uses
-  {$IFNDEF WINDOWS}BaseUnix, sockets, math;
-  {$ELSE}winsock2, windows;
+  sockets,
+  {$IFNDEF WINDOWS}BaseUnix, math;
+  {$ELSE}windows, winsock2;
   {$ENDIF}
 
-function AddrToString(Addr: TSockAddr): String;
-{$IFDEF WINDOWS}
-//var
-
-{$ENDIF}
+function AddrToString(Addr: sockets.TSockAddr): String;
 begin
-  {$IFNDEF WINDOWS}
   Result := NetAddrToStr(Addr.sin_addr);
-  {$ELSE}
-  Result := inet_ntoa(Addr.sin_addr);
-  {$ENDIF}
-
   Result := Result  + ':' + IntToStr(Addr.sin_port);
 end;
 
