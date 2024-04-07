@@ -1,7 +1,7 @@
 # Activating DWEN
-Start by inspeting current fuse settings:  
+Start by inspecting current fuse settings:  
 ```bash
-~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM1 -c avrisp2 -p m328p
+$ avrdude -P /dev/ttyACM1 -c avrisp2 -p m328p
 avrdude: AVR device initialized and ready to accept instructions
 Reading | ################################################## | 100% 0.00s
 avrdude: Device signature = 0x1e950f (probably m328p)
@@ -11,7 +11,7 @@ avrdude done.  Thank you.
 
 Set DWEN fuse (HFUSE: DF -> 9F):  
 ```bash
-~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM1 -c avrisp2 -p m328p -U hfuse:w:0x96:m
+$ avrdude -P /dev/ttyACM1 -c avrisp2 -p m328p -U hfuse:w:0x96:m
 avrdude: AVR device initialized and ready to accept instructions
 Reading | ################################################## | 100% 0.00s
 avrdude: Device signature = 0x1e950f (probably m328p)
@@ -32,7 +32,7 @@ avrdude done.  Thank you.
 
 Check if ISP works:  
 ```bash
-~/LazProjs/debugwire-gdb-bridge $ avrdude -P /dev/ttyACM1 -c avrisp2 -p m328p
+$ avrdude -P /dev/ttyACM1 -c avrisp2 -p m328p
 avrdude: stk500v2_command(): command failed
 avrdude: initialization failed, rc=-1
          Double check connections and try again, or use -F to override
@@ -42,7 +42,7 @@ avrdude done.  Thank you.
 
 Now start dw_gdb:  
 ```bash
-~/LazProjs/debugwire-gdb-bridge $ ./dw_gdb -s /dev/ttyUSB0 
+$ ./dw_gdb -s /dev/ttyUSB0 -v
 13:24:12.518  BAUD: 200000. Data: 56. Bin: 00111000
 13:24:12.518  Scale = 70%
 13:24:12.524  BAUD: 140000. Data: 206. Bin: 11001110
@@ -75,14 +75,14 @@ Start accepting...
 # Deactivating DWEN
 Temporarily disable DWEN:  
 ```bash
-~/LazProjs/debugwire-gdb-bridge $ ./dw_gdb -s /dev/ttyUSB0 -b 62000 -i
+$ ./dw_gdb -s /dev/ttyUSB0 -b 62000 -i
 DWEN temporarily disabled until power to controller is cycled.
 Connect ISP now to change fuses.
 ```
 
 Reconnect ISP and test ISP connection:  
 ```bash
-~/LazProjs/debugwire-gdb-bridge $ avrdude -c usbasp -p m328p -v
+$ avrdude -c usbasp -p m328p -v
 avrdude: AVR device initialized and ready to accept instructions
 Reading | ################################################## | 100% 0.00s
 avrdude: Device signature = 0x1e950f (probably m328p)
