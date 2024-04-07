@@ -1,24 +1,42 @@
 # debugwire-gdb-bridge
-## Work in progress...
-This is a Pascal implementation of the debugwire protocol for small AVR controllers such as attiny85 or atmega328P. It includes a gdb remote serial protocol implementation so that avr-gdb can communicate with the debugwire code to debug on chip code. The aim is to focus on features that would enable one to use Lazarus to both write code for and debug the generated code on compatible AVR microcontrollers.
+## About
+This is a Pascal implementation of the debugwire protocol for small AVR controllers such as attiny85 or atmega328P. It includes a gdb remote serial protocol server so that a debugger such as gdb or [LazDebuggerFpRspRemote](https://wiki.freepascal.org/LazDebuggerFpRspRemote) in Lazarus can communicate with the debugwire implementation to debug on-chip code. The aim is to focus on features that would enable one to use Lazarus to both write code for and debug the generated code on compatible AVR microcontrollers.
 
-Extensively tested on Linux with the following USB-serial converters: FTDI's FT232RL and CP2102. The CH340 USB-serial converter is also [reported to work](https://github.com/dcwbrown/dwire-debug).  Basically any USB-serial converter that supports custom baud rates and either the break serial command or can send a clean binary zero byte at low baud should work. Note that currently there is an issue detecting the baud rate of an attiny85 running at 1 MHz, i.e. when the expected baud rate is around 7812, using a CP2102.
+A simple USB-serial adapter can be used to interface with hardware, see [hardware documentation](documentation/hardware.md).
 
-Based on the following sources:  
+## Usage
+Run the _dw_gdb_ executable and a serial port (mandatory) to connect to. It will connect to the serial port and if successfull, open a TCP port (default 1234) and wait for a TCP connection from a debugger. A baud rate can be specified for the serial connection - if not a baud rate scan will be done. The DWEN fuse can be diabled temporarily to enable ISP programming. The general syntax and command line options supported are:
+```bash
+dw_gdb -S <sp> [-B <bd>] [-T <tp>] [-I] [-V] [-H]
+
+-S <sp>, -s <sp>, --serialport=<sp>
+Connect to serial port <sp>, e.g. /dev/ttyUSB0
+
+-B <bd>, -b <bd>, --baud=<bd>
+Connect to serial port using baud rate <bd>.  If not specified, the debugWIRE baud rate will be scanned automatically.
+
+-T <tp>, -t <tp>, --tcpport=<tp>
+Set TCP port <tp> for remote connection.  If not specified, TCP port defaults to 1234.
+
+-I, -i, --ispenable
+Temporarily disable DWEN fuse to enable ISP functionality and exit.
+
+-V, -v, --verbose
+Enable verbose debug output.
+
+-H, -h, -?, --help
+Display this help and exit.
+```
+Note that parameters for long options can be separated by a `=` or a space.
+
+## References
+Special thanks to RikusW and others for documenting the debugwire protocol:  
 http://www.ruemohr.org/docs/debugwire.html  
+
+Other debugwire implementations that in some way inspired this work:  
 https://github.com/dcwbrown/dwire-debug  
 https://github.com/mvirkkunen/dwprog  
 https://github.com/jbtronics/WireDebugger  
 
-## TODO:
-* ~~Add breakpoint manager for more than one breakpoint.~~
-  * ~~Execute stored instruction when continuing after break - SW BP disabled for testing.~~
-  * ~~When deleting a SW BP, restore original instruction (flash write). (disabled while testing)~~
-  * ~~During flash read/write check if inactive SW BP may still have BREAK opcode in flash - if so handle specific opcode in BP manager.~~
-  * ~~Put first BP in HW~~ Done
-  * ~~Further BP in list, with corresponding opcode replaced with break (flash write). Store opcode in manager.~~ Done
-  * ~~If HW BP deleted, keep HW BP open until next BP is set to minimize flash rewrites.~~ Done
-* Scan (BreakResponse) candidate ports automatically - perhaps check port type and scan if a real serial port (hardware or usb) and can be opened exlusively. See this [link](https://stackoverflow.com/a/1394301) for Windows and this [link](https://stackoverflow.com/questions/2530096/how-to-find-all-serial-devices-ttys-ttyusb-on-linux-without-opening-them) for Linux.
-* Add elf reader - long term, low priority.
-* ~~Incorporate notes from https://www.embecosm.com/appnotes/ean4/embecosm-howto-rsp-server-ean4-issue-2.html#id3077923.~~
-* ~~Add Windows support for serial functions and network socket.~~ Not well tested yet...
+## Todo list:
+* Scan candidate serial ports automatically to detect a debugwire compatible device. This could potentially affect other serial connected hardware, so caution is required. See this [link](https://stackoverflow.com/a/1394301) for Windows and this [link](https://stackoverflow.com/questions/2530096/how-to-find-all-serial-devices-ttys-ttyusb-on-linux-without-opening-them) for Linux.
