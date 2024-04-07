@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="11"/>
+    <Version Value="12"/>
     <General>
       <Flags>
         <MainUnitHasCreateFormStatements Value="False"/>
         <MainUnitHasTitleStatement Value="False"/>
         <MainUnitHasScaledStatement Value="False"/>
+        <CompatibilityMode Value="True"/>
       </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <MainUnit Value="0"/>
       <Title Value="debugwire_cli"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
@@ -22,13 +22,15 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="-s /dev/ttyUSB0"/>
+        <CommandLineParams Value="-S /dev/ttyUSB0"/>
+        <WorkingDirectory Value="/home/christo/LazProjs/LazScope/firmware"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="-s /dev/ttyUSB0"/>
+            <CommandLineParams Value="-S /dev/ttyUSB0"/>
+            <WorkingDirectory Value="/home/christo/LazProjs/LazScope/firmware"/>
           </local>
         </Mode0>
       </Modes>
@@ -63,6 +65,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
+      <OtherUnitFiles Value=".."/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <CodeGeneration>
@@ -76,6 +79,7 @@
     </CodeGeneration>
     <Linking>
       <Debugging>
+        <DebugInfoType Value="dsDwarf3"/>
         <TrashVariables Value="True"/>
       </Debugging>
     </Linking>
