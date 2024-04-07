@@ -3,7 +3,7 @@ program dw_gdb;
 uses
   {$ifdef unix}cthreads,{$endif}
   serial, sysutils, serialutils, debugwire,
-  binutils, rsp, genutils, getopts;
+  binutils, rsp, getopts;
 
 const
   DefaultTcpPort = 1234;
@@ -22,59 +22,54 @@ var
 procedure printHelp;
 begin
   WriteLn('Usage:');
-  WriteLn('dw_gdb [-S <sp>] [-B <bd>] [-T <tp>] [-V] [-H]');
+  WriteLn('dw_gdb -S <sp> [-B <bd>] [-T <tp>] [-I] [-V] [-H]');
   WriteLn('');
-  WriteLn('-S <sp>, --serialport=<sp>');
+  WriteLn('-S <sp>, -s <sp>, --serialport=<sp>');
   {$ifdef Windows}
   WriteLn('Connect to serial port <sp>, e.g. COM3 or \\.\COM13');
   {$else}
   WriteLn('Connect to serial port <sp>, e.g. /dev/ttyUSB0');
   {$endif}
   WriteLn('');
-  WriteLn('-B <bd>, --baud=<bd>');
+  WriteLn('-B <bd>, -b <bd>, --baud=<bd>');
   WriteLn('Connect to serial port using baud rate <bd>.  If not specified, the debugWIRE baud rate will be scanned automatically.');
   WriteLn('');
-  WriteLn('-T <tp>, --tcpport=<tp>');
-  WriteLn('Set GDB server to listen on TCP port <tp>.  If not specified, TCP port defaults to 1234.');
+  WriteLn('-T <tp>, -t <tp>, --tcpport=<tp>');
+  WriteLn('Set TCP port <tp> for remote connection.  If not specified, TCP port defaults to 1234.');
   WriteLn('');
   WriteLn('-I, -i, --ispenable');
-  WriteLn('Temporarily disable DWEN fuse to enable ISP functionality.');
+  WriteLn('Temporarily disable DWEN fuse to enable ISP functionality and exit.');
   WriteLn('');
   WriteLn('-V, -v, --verbose');
   WriteLn('Enable verbose debug output.');
   WriteLn('');
   WriteLn('-H, -h, -?, --help');
-  WriteLn('Display this help');
+  WriteLn('Display this help and exit.');
 end;
 
 procedure DisableDWEN;
 var
   dw: TDebugWire;
 begin
-  if serialPort <> '' then
-  begin
-    dw := TDebugWire.Create;
-    try
-      if dw.Connect(serialPort, baud) then
+  dw := TDebugWire.Create;
+  try
+    if dw.Connect(serialPort, baud) then
+    begin
+      dw.BreakCmd;
+      if dw.IdentifyTarget then
       begin
-        dw.BreakCmd;
-        if dw.IdentifyTarget then
-        begin
-          dw.DisableDWEN;
-          WriteLn('DWEN temporarily disabled until power to controller is cycled.');
-          WriteLn('Connect ISP now to change fuses.');
-        end
-        else
-          WriteLn('ERROR - Failed to connect to device.');
+        dw.DisableDWEN;
+        WriteLn('DWEN temporarily disabled until power to controller is cycled.');
+        WriteLn('Connect ISP now to change fuses.');
       end
       else
-        WriteLn('ERROR - couldn''t open serial port.');
-    finally
-      dw.Free;
-    end;
-  end
-  else
-    WriteLn('Please specify serial port');
+        WriteLn('ERROR - Failed to connect to device.');
+    end
+    else
+      WriteLn('ERROR - couldn''t open serial port.');
+  finally
+    dw.Free;
+  end;
 end;
 
 begin
@@ -126,10 +121,18 @@ begin
           printHelp;
           Halt;
         end;
-      'I', 'i':  DisableDWENfuse := true;
-      'V', 'v':  verbose := true;
+      'I', 'i': DisableDWENfuse := true;
+      'V', 'v': verbose := true;
     end;
   until c = EndOfOptions;
+
+  if serialPort = '' then
+  begin
+    WriteLn;
+    WriteLn('No serial port specified. This is mandatory.');
+    WriteLn;
+    Halt;
+  end;
 
   if DisableDWENfuse then
   begin
